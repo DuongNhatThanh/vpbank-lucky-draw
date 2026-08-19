@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/domain/drawengine.ts","./src/domain/eligibility.ts","./src/domain/invariants.ts","./src/domain/types.ts","./src/test/setup.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/domain/drawengine.ts","./src/domain/eligibility.ts","./src/domain/eventmachine.ts","./src/domain/invariants.ts","./src/domain/types.ts","./src/test/setup.ts"],"version":"5.9.3"}

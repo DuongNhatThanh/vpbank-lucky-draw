@@ -53,7 +53,13 @@ export interface EventState {
 export type DomainErrorCode =
   | "NO_ELIGIBLE_PARTICIPANTS"
   | "INVALID_RANDOM_RANGE"
-  | "SECURE_RANDOM_UNAVAILABLE";
+  | "SECURE_RANDOM_UNAVAILABLE"
+  | "INVALID_EVENT_STATE"
+  | "INVALID_PHASE_TRANSITION"
+  | "INVALID_COMMAND"
+  | "INVALID_CURRENT_ATTEMPT"
+  | "CURRENT_PRIZE_INCOMPLETE"
+  | "INVALID_WINNER_SELECTION";
 
 export interface DomainError {
   code: DomainErrorCode;
