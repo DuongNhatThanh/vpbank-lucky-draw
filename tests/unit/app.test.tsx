@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import App from "../../src/App";
 import { LiveOperator } from "../../src/components/operator/LiveOperator";
 import { PrizeReview } from "../../src/components/operator/PrizeReview";
@@ -11,6 +11,15 @@ import { PRESENTATION_TIMING } from "../../src/presentation/timing";
 
 const NOW = "2026-08-20T08:00:00.000Z";
 const SAVED_AT = "2026-08-20T08:05:00.000Z";
+
+beforeEach(() => {
+  vi.stubGlobal("Audio", vi.fn(() => ({ play: vi.fn().mockResolvedValue(undefined), volume: 1 })));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe("App", () => {
   it("boots the operator setup flow", () => {
@@ -259,6 +268,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /open presentation/i }));
 
     expect(screen.getByRole("button", { name: /return to operator/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /sound on/i })).toBeVisible();
     expect(screen.getByText(/winner selected and persisted/i)).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: /return to operator/i }));

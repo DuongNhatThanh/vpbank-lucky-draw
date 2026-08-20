@@ -27,6 +27,7 @@ test("operator live flow reveals the first winner in presentation and advances",
 
   await page.getByRole("button", { name: /open presentation/i }).click();
   await expect(page.getByRole("button", { name: /return to operator/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /sound on/i })).toBeVisible();
   await expect(page.locator('[data-testid="presentation-digit"]')).toHaveCount(4);
   await expect(page.locator('[data-testid="presentation-digit"]')).toHaveText(operatorWinnerCode!.split(""));
   await expect(page.getByText(/awaiting winner confirmation/i)).toBeVisible();

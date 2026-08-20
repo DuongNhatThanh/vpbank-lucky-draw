@@ -10,7 +10,10 @@ import {
   selectPrizeProgress,
 } from "../../state/selectors";
 import { PRESENTATION_TIMING } from "../../presentation/timing";
+import { playPresentationSound } from "../../presentation/audio";
+import { useFullscreen } from "../../presentation/fullscreen";
 import { StatusMessage } from "../shared/StatusMessage";
+import { CelebrationEffect } from "./CelebrationEffect";
 import { PresentationHeader } from "./PresentationHeader";
 import { PrizeProgress } from "./PrizeProgress";
 import { ReelDisplay } from "./ReelDisplay";
@@ -23,6 +26,7 @@ export interface PresentationStageProps {
 }
 
 export function PresentationStage({ state, onReturnToOperator, onRevealComplete }: PresentationStageProps) {
+  const stageRef = useRef<HTMLElement | null>(null);
   const currentPrize = selectCurrentPrize(state);
   const progress = selectPrizeProgress(state);
   const pendingWinner = selectCurrentPendingWinner(state);
@@ -32,11 +36,42 @@ export function PresentationStage({ state, onReturnToOperator, onRevealComplete 
   const isGrandPrize = currentPrize?.isGrandPrize ?? false;
   const [reelSettledDigits, setReelSettledDigits] = useState(0);
   const [countdownStep, setCountdownStep] = useState(3);
+  const [presentationSoundEnabled, setPresentationSoundEnabled] = useState(state.event.soundEnabled);
   const prefersReducedMotion = usePrefersReducedMotion();
   const onRevealCompleteRef = useRef(onRevealComplete);
+  const presentationSoundEnabledRef = useRef(presentationSoundEnabled);
   const revealAttemptRef = useRef<string | null>(null);
   const revealCompletedRef = useRef(false);
   const countdownAttemptRef = useRef<string | null>(null);
+  const soundPhaseRef = useRef<EventPhase | null>(null);
+  const fullscreen = useFullscreen(stageRef);
+
+  useEffect(() => {
+    setPresentationSoundEnabled(state.event.soundEnabled);
+  }, [state.event.soundEnabled]);
+
+  useEffect(() => {
+    presentationSoundEnabledRef.current = presentationSoundEnabled;
+  }, [presentationSoundEnabled]);
+
+  useEffect(() => {
+    if (soundPhaseRef.current === phase) {
+      return;
+    }
+
+    soundPhaseRef.current = phase;
+    if (phase === "drawing") {
+      void playPresentationSound("drawStart", presentationSoundEnabled);
+    } else if (phase === "prizeComplete") {
+      void playPresentationSound(isGrandPrize ? "grandPrize" : "winnerConfirmed", presentationSoundEnabled);
+    }
+  }, [isGrandPrize, phase, presentationSoundEnabled]);
+
+  useEffect(() => {
+    if (phase === "countdown") {
+      void playPresentationSound("countdownTick", presentationSoundEnabled);
+    }
+  }, [countdownStep, phase, presentationSoundEnabled]);
 
   useEffect(() => {
     onRevealCompleteRef.current = onRevealComplete;
@@ -65,6 +100,7 @@ export function PresentationStage({ state, onReturnToOperator, onRevealComplete 
       window.setTimeout(() => {
         setReelSettledDigits(index + 1);
         if (index === PRESENTATION_TIMING.reelDigitStopsMs.length - 1) {
+          void playPresentationSound("revealComplete", presentationSoundEnabledRef.current);
           triggerRevealComplete();
         }
       }, delayMs),
@@ -132,9 +168,20 @@ export function PresentationStage({ state, onReturnToOperator, onRevealComplete 
     onRevealCompleteRef.current();
   }
 
+  const celebrationActive = phase === "prizeComplete" || phase === "eventComplete";
+
   return (
-    <section className="presentation-stage" aria-label="Presentation mode">
-      <PresentationHeader eventName={state.event.eventName} onReturnToOperator={onReturnToOperator} />
+    <section ref={stageRef} className={`presentation-stage${isGrandPrize ? " presentation-stage--grand" : ""}`} aria-label="Presentation mode">
+      <PresentationHeader
+        eventName={state.event.eventName}
+        onReturnToOperator={onReturnToOperator}
+        fullscreenSupported={fullscreen.supported}
+        fullscreenActive={fullscreen.active}
+        fullscreenError={fullscreen.error}
+        onToggleFullscreen={() => void fullscreen.toggle()}
+        soundEnabled={presentationSoundEnabled}
+        onToggleSound={() => setPresentationSoundEnabled((enabled) => !enabled)}
+      />
 
       <div className="presentation-stage__body">
         <PrizeProgress prize={currentPrize} progress={progress} />
@@ -146,6 +193,7 @@ export function PresentationStage({ state, onReturnToOperator, onRevealComplete 
           <div className="presentation-canvas__status">{renderPhaseStatus(phase, pendingWinner, confirmedWinners.length)}</div>
         </section>
       </div>
+      <CelebrationEffect active={celebrationActive} enhanced={isGrandPrize || phase === "eventComplete"} reducedMotion={prefersReducedMotion} />
     </section>
   );
 }
@@ -178,6 +226,8 @@ function renderVisualState(
   if (phase === "eventComplete") {
     return (
       <section className="presentation-winners" aria-label="Confirmed winners">
+        <p className="presentation-winners__eyebrow">Lucky Draw Complete</p>
+        <h2 className="presentation-winners__title">Thank you for celebrating with us</h2>
         <div className="presentation-winners__summary">
           <span className="presentation-winners__count">{confirmedWinners.length}</span>
           <p className="presentation-winners__label">Confirmed prize winners</p>

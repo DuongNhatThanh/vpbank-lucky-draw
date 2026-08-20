@@ -1,7 +1,8 @@
-import { act, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PresentationStage } from "../../src/components/presentation/PresentationStage";
 import { PRESENTATION_TIMING } from "../../src/presentation/timing";
+import { playPresentationSound } from "../../src/presentation/audio";
 import { createInitialEventState } from "../../src/state/initialState";
 import type { AppState } from "../../src/state/actions";
 
@@ -11,6 +12,14 @@ const RESOLVED_AT = "2026-08-20T08:01:00.000Z";
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: false });
+  Object.defineProperty(document, "fullscreenElement", { configurable: true, value: null, writable: true });
+  delete (HTMLElement.prototype as HTMLElement & { requestFullscreen?: unknown }).requestFullscreen;
+  delete (document as Document & { exitFullscreen?: unknown }).exitFullscreen;
+});
+
+beforeEach(() => {
+  vi.stubGlobal("Audio", vi.fn(() => ({ play: vi.fn().mockResolvedValue(undefined), volume: 1 })));
 });
 
 describe("PresentationStage", () => {
@@ -146,6 +155,95 @@ describe("PresentationStage", () => {
 
     expect(screen.getByText(/all six prizes have confirmed winners/i)).toBeVisible();
     expect(screen.getByLabelText("Confirmed winners").querySelectorAll("li")).toHaveLength(6);
+  });
+
+  it("requests and exits fullscreen when the browser supports it", async () => {
+    Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: true });
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, value: null, writable: true });
+    const requestFullscreen = vi.fn(async function (this: HTMLElement) {
+      Object.defineProperty(document, "fullscreenElement", { configurable: true, value: this, writable: true });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    const exitFullscreen = vi.fn(async () => {
+      Object.defineProperty(document, "fullscreenElement", { configurable: true, value: null, writable: true });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", { configurable: true, value: requestFullscreen });
+    Object.defineProperty(document, "exitFullscreen", { configurable: true, value: exitFullscreen });
+
+    render(<PresentationStage state={createPendingWinnerState("0027")} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />);
+
+    const enterButton = await screen.findByRole("button", { name: /enter fullscreen/i });
+    fireEvent.click(enterButton);
+    await waitFor(() => expect(requestFullscreen).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: /exit fullscreen/i })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: /exit fullscreen/i }));
+    await waitFor(() => expect(exitFullscreen).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps working when fullscreen is denied", async () => {
+    Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: true });
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: vi.fn().mockRejectedValue(new Error("denied")),
+    });
+
+    render(<PresentationStage state={createPendingWinnerState("0027")} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /enter fullscreen/i }));
+    expect(await screen.findByText(/presentation will continue normally/i)).toBeVisible();
+    expect(screen.getAllByTestId("presentation-digit").map((digit) => digit.textContent).join("")).toBe("0027");
+  });
+
+  it("toggles presentation sound without changing the event state", () => {
+    const state = createPendingWinnerState("0027");
+    const before = JSON.stringify(state.event);
+    render(<PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /sound on/i }));
+
+    expect(screen.getByRole("button", { name: /sound off/i })).toBeVisible();
+    expect(JSON.stringify(state.event)).toBe(before);
+  });
+
+  it("plays enabled sounds and safely handles blocked playback", async () => {
+    const play = vi.fn().mockResolvedValue(undefined);
+    const audio = { play, volume: 1 } as unknown as HTMLAudioElement;
+    const factory = vi.fn(() => audio);
+
+    await expect(playPresentationSound("revealComplete", true, factory)).resolves.toBe(true);
+    expect(factory).toHaveBeenCalledWith("/audio/reveal-complete.mp3");
+    expect(play).toHaveBeenCalledTimes(1);
+
+    const rejectedAudio = { play: vi.fn().mockRejectedValue(new Error("blocked")), volume: 1 } as unknown as HTMLAudioElement;
+    await expect(playPresentationSound("drawStart", true, () => rejectedAudio)).resolves.toBe(false);
+    await expect(playPresentationSound("drawStart", false, factory)).resolves.toBe(false);
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows bounded celebration for a confirmed prize and enhanced Grand Prize styling", () => {
+    const state = createPrizeCompleteState("0027");
+    const { container, rerender } = render(
+      <PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />,
+    );
+
+    expect(screen.getByTestId("confetti")).toBeVisible();
+
+    state.event.currentPrizeIndex = 5;
+    state.event.attempts[0] = { ...state.event.attempts[0]!, prizeId: state.event.prizes[5]!.id };
+    rerender(<PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />);
+
+    expect(container.querySelector(".celebration-effect--grand")).not.toBeNull();
+    expect(container.querySelector(".presentation-stage--grand")).not.toBeNull();
+  });
+
+  it("uses a static celebration under reduced motion", () => {
+    installMatchMedia(true);
+    render(<PresentationStage state={createPrizeCompleteState("0027")} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />);
+
+    expect(screen.getByTestId("confetti-static")).toBeVisible();
+    expect(screen.queryByTestId("confetti")).not.toBeInTheDocument();
   });
 });
 
