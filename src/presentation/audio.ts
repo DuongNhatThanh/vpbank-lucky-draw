@@ -4,7 +4,7 @@ export const PRESENTATION_AUDIO_ASSETS: Record<PresentationSound, string> = {
   countdownTick: "/audio/countdown-tick.mp3",
   drawStart: "/audio/draw-start.mp3",
   revealComplete: "/audio/reveal-complete.mp3",
-  winnerConfirmed: "/audio/winner-confirmed.mp3",
+  winnerConfirmed: "/audio/winner-confirmed.wav",
   grandPrize: "/audio/grand-prize.mp3",
 };
 
