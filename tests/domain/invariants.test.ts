@@ -81,6 +81,20 @@ describe("invariants", () => {
     expect(errorCodes(createState({ attempts }))).toContain("ABSENT_ATTEMPT_PARTICIPANT_STATUS_MISMATCH");
   });
 
+  it("fails when a confirmed participant has no confirmed attempt", () => {
+    const participants = createParticipants(3);
+    participants[0] = { ...participants[0]!, status: "confirmed" };
+
+    expect(errorCodes(createState({ participants }))).toContain("CONFIRMED_PARTICIPANT_ATTEMPT_COUNT");
+  });
+
+  it("fails when an absent participant has no absent attempt", () => {
+    const participants = createParticipants(3);
+    participants[0] = { ...participants[0]!, status: "absent" };
+
+    expect(errorCodes(createState({ participants }))).toContain("ABSENT_PARTICIPANT_ATTEMPT_MISMATCH");
+  });
+
   it("fails when currentPrizeIndex is greater than five", () => {
     expect(errorCodes(createState({ currentPrizeIndex: 6 }))).toContain("CURRENT_PRIZE_INDEX_OUT_OF_RANGE");
   });

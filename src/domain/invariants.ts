@@ -17,8 +17,10 @@ export type InvariantErrorCode =
   | "CURRENT_ATTEMPT_NOT_FOUND"
   | "CONFIRMED_ATTEMPT_PARTICIPANT_ELIGIBLE"
   | "CONFIRMED_ATTEMPT_PARTICIPANT_STATUS_MISMATCH"
+  | "CONFIRMED_PARTICIPANT_ATTEMPT_COUNT"
   | "ABSENT_ATTEMPT_PARTICIPANT_ELIGIBLE"
   | "ABSENT_ATTEMPT_PARTICIPANT_STATUS_MISMATCH"
+  | "ABSENT_PARTICIPANT_ATTEMPT_MISMATCH"
   | "MULTIPLE_CONFIRMED_ATTEMPTS_FOR_PRIZE"
   | "PARTICIPANT_CONFIRMED_MULTIPLE_PRIZES"
   | "ADVANCED_WITH_INCOMPLETE_PRIZE"
@@ -53,6 +55,7 @@ export function validateEventStateInvariants(state: EventState): InvariantValida
   validateAttemptReferences(state, prizeById, participantById, errors);
   validatePendingState(state, prizeById, participantById, errors);
   validateResolvedAttemptEligibility(state, participantById, errors);
+  validateParticipantAttemptConsistency(state, errors);
   validatePrizeCompletion(state, errors);
   validatePhaseSpecificInvariants(state, errors);
 
@@ -281,6 +284,49 @@ function validateResolvedAttemptEligibility(
           participantId: attempt.participantId,
           attemptId: attempt.id,
           participantStatus: participant.status,
+        },
+      });
+    }
+  }
+}
+
+function validateParticipantAttemptConsistency(state: EventState, errors: InvariantError[]): void {
+  const confirmedAttemptCounts = new Map<string, number>();
+  const absentAttemptCounts = new Map<string, number>();
+
+  for (const attempt of state.attempts) {
+    if (attempt.status === "confirmed") {
+      confirmedAttemptCounts.set(attempt.participantId, (confirmedAttemptCounts.get(attempt.participantId) ?? 0) + 1);
+    }
+
+    if (attempt.status === "absent") {
+      absentAttemptCounts.set(attempt.participantId, (absentAttemptCounts.get(attempt.participantId) ?? 0) + 1);
+    }
+  }
+
+  for (const participant of state.participants) {
+    const confirmedAttemptCount = confirmedAttemptCounts.get(participant.id) ?? 0;
+    const absentAttemptCount = absentAttemptCounts.get(participant.id) ?? 0;
+
+    if (participant.status === "confirmed" && confirmedAttemptCount !== 1) {
+      errors.push({
+        code: "CONFIRMED_PARTICIPANT_ATTEMPT_COUNT",
+        message: "A confirmed participant must have exactly one matching confirmed attempt.",
+        details: {
+          participantId: participant.id,
+          confirmedAttemptCount,
+        },
+      });
+    }
+
+    if (participant.status === "absent" && (absentAttemptCount < 1 || confirmedAttemptCount > 0)) {
+      errors.push({
+        code: "ABSENT_PARTICIPANT_ATTEMPT_MISMATCH",
+        message: "An absent participant must have at least one matching absent attempt and no confirmed attempts.",
+        details: {
+          participantId: participant.id,
+          confirmedAttemptCount,
+          absentAttemptCount,
         },
       });
     }
