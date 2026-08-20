@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { vi } from "vitest";
 import App from "../../src/App";
 import { LiveOperator } from "../../src/components/operator/LiveOperator";
 import { PrizeReview } from "../../src/components/operator/PrizeReview";
@@ -6,6 +7,7 @@ import { createInitialEventState } from "../../src/state/initialState";
 import { PERSISTENCE_KEY } from "../../src/services/persistence";
 import { MemoryStorage } from "../helpers/memoryStorage";
 import type { EventState } from "../../src/domain/types";
+import { PRESENTATION_TIMING } from "../../src/presentation/timing";
 
 const NOW = "2026-08-20T08:00:00.000Z";
 const SAVED_AT = "2026-08-20T08:05:00.000Z";
@@ -236,6 +238,72 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: /^Prize 1$/i })).toBeVisible();
   });
 
+  it("switches into presentation mode and back without changing the selected winner", () => {
+    const storage = new MemoryStorage();
+    render(
+      <App
+        now={NOW}
+        storage={storage}
+        createAttemptId={() => "attempt-0"}
+        selectWinnerDependencies={firstEligibleDependencies()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /load default roster/i }));
+    fireEvent.click(screen.getByRole("button", { name: /apply participants/i }));
+    fireEvent.click(screen.getByRole("button", { name: /continue to live draw/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start draw/i }));
+    fireEvent.click(screen.getByRole("button", { name: /complete countdown/i }));
+    fireEvent.click(screen.getByRole("button", { name: /select winner/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /open presentation/i }));
+
+    expect(screen.getByRole("button", { name: /return to operator/i })).toBeVisible();
+    expect(screen.getByText(/winner selected and persisted/i)).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: /return to operator/i }));
+
+    expect(screen.getByRole("button", { name: /complete reveal/i })).toBeVisible();
+    expect(readPersistedEventState(storage).attempts[0]?.participantId).toBe("participant-0001");
+  });
+
+  it("resumes reelStopping, auto-completes presentation reveal, and preserves the same attempt", () => {
+    vi.useFakeTimers();
+    const storage = new MemoryStorage();
+    const savedState = createReelStoppingRecoverableState("0027");
+    storage.setItem(PERSISTENCE_KEY, JSON.stringify({ storageVersion: 1, savedAt: SAVED_AT, state: savedState }));
+
+    try {
+      render(<App now={NOW} storage={storage} createAttemptId={() => "unexpected-attempt"} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /resume previous session/i }));
+      expect(readPersistedEventState(storage).currentAttemptId).toBe("attempt-27");
+      expect(readPersistedEventState(storage).attempts).toHaveLength(1);
+
+      fireEvent.click(screen.getByRole("button", { name: /open presentation/i }));
+      expect(screen.getByText(/winner selected and persisted/i)).toBeVisible();
+
+      act(() => {
+        vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[3] + 1);
+        vi.runAllTimers();
+      });
+
+      const persisted = readPersistedEventState(storage);
+      expect(persisted.phase).toBe("pendingWinner");
+      expect(persisted.currentAttemptId).toBe("attempt-27");
+      expect(persisted.attempts).toHaveLength(1);
+      expect(persisted.attempts[0]?.participantId).toBe("participant-0027");
+      expect(persisted.participants.find((participant) => participant.status === "pending")?.code).toBe("0027");
+      expect(screen.getAllByTestId("presentation-digit").map((digit) => digit.textContent).join("")).toBe("0027");
+
+      fireEvent.click(screen.getByRole("button", { name: /return to operator/i }));
+      expect(screen.getByRole("button", { name: /confirm winner/i })).toBeVisible();
+      expect(screen.queryByRole("button", { name: /complete reveal/i })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("ignores a repeated Select Winner activation before the first commit renders", () => {
     const storage = new MemoryStorage();
     const attemptIds = ["attempt-0", "attempt-1"];
@@ -296,6 +364,34 @@ describe("App", () => {
     expect(storage.peek(PERSISTENCE_KEY)).not.toContain("attempt-1");
   });
 });
+
+
+function createReelStoppingRecoverableState(code: string): EventState {
+  const event = createInitialEventState(NOW);
+  const participant = event.participants.find((item) => item.code === code);
+  if (!participant) {
+    throw new Error(`Participant ${code} not found.`);
+  }
+
+  const pendingParticipant = { ...participant, status: "pending" as const };
+  return {
+    ...event,
+    phase: "reelStopping",
+    participants: event.participants.map((item) => (item.id === pendingParticipant.id ? pendingParticipant : item)),
+    currentAttemptId: "attempt-27",
+    attempts: [
+      {
+        id: "attempt-27",
+        prizeId: event.prizes[0]!.id,
+        participantId: pendingParticipant.id,
+        status: "pending",
+        createdAt: NOW,
+      },
+    ],
+    configurationLocked: true,
+    updatedAt: NOW,
+  };
+}
 
 function createRecoverableState() {
   const event = createInitialEventState(NOW);
@@ -362,6 +458,7 @@ function createLiveOperatorProps() {
     confirmedWinners: [],
     history: [],
     primaryAction: "startCountdown" as const,
+    onOpenPresentation: () => undefined,
     onStartCountdown: () => undefined,
     onStartDraw: () => undefined,
     onSelectWinner: () => undefined,

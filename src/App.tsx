@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
+import { PresentationStage } from "./components/presentation/PresentationStage";
 import { DEFAULT_PARTICIPANTS } from "./data/defaultParticipants";
 import type { EventMachineDependencies } from "./domain/eventMachine";
 import type { AppResult } from "./domain/types";
@@ -60,6 +61,8 @@ export interface AppProps {
   onBeforeLiveCommandCommit?: (command: LiveCommandName) => void;
 }
 
+type ViewMode = "operator" | "presentation";
+
 export default function App({ storage, now, createAttemptId, selectWinnerDependencies, onBeforeLiveCommandCommit }: AppProps) {
   const [bootTime] = useState(() => now ?? new Date().toISOString());
   const [state, setState] = useState<AppState>(() => initializeAppState({ now: bootTime, ...withStorage(storage) }));
@@ -68,8 +71,10 @@ export default function App({ storage, now, createAttemptId, selectWinnerDepende
   const [csvFileName, setCsvFileName] = useState<string | null>(null);
   const [startNewConfirmationOpen, setStartNewConfirmationOpen] = useState(false);
   const [liveActionInFlight, setLiveActionInFlight] = useState<LiveCommandName | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("operator");
   const attemptCounterRef = useRef(0);
   const liveActionInFlightRef = useRef<LiveCommandName | null>(null);
+  const revealCompletionAttemptRef = useRef<string | null>(null);
   const getTimestamp = () => now ?? new Date().toISOString();
 
   useEffect(() => {
@@ -87,6 +92,12 @@ export default function App({ storage, now, createAttemptId, selectWinnerDepende
     }
   }, [state.event, state.error]);
 
+  useEffect(() => {
+    if (state.event.phase !== "reelStopping") {
+      revealCompletionAttemptRef.current = null;
+    }
+  }, [state.event.currentAttemptId, state.event.phase]);
+
   const currentPrize = selectCurrentPrize(state);
   const currentAttempt = selectCurrentAttempt(state);
   const eligibleParticipantCount = selectEligibleParticipantCount(state);
@@ -102,9 +113,22 @@ export default function App({ storage, now, createAttemptId, selectWinnerDepende
   const canPrepareLiveDraw = selectCanPrepareLiveDraw(state);
   const canStartLiveDraw = selectCanStartLiveDraw(state);
   const canShowNormalSetup = state.recovery.status === "noSession" || state.recovery.status === "resumed";
+  const canShowLiveExperience = canShowNormalSetup && state.event.phase !== "setup";
   const shouldShowSetupConfiguration = canShowNormalSetup && state.event.phase === "setup";
-  const shouldShowLiveOperator = canShowNormalSetup && state.event.phase !== "setup";
+  const shouldShowLiveOperator = canShowLiveExperience && viewMode === "operator";
+  const shouldShowPresentation = canShowLiveExperience && viewMode === "presentation";
   const heroStatus = getHeroStatus(state, canStartLiveDraw);
+  const pageTitle = state.event.phase === "setup" ? "Operator setup" : "Live operator";
+  const pageLede =
+    state.event.phase === "setup"
+      ? "Prepare the participant roster, review six prizes, and move safely into the live draw flow."
+      : "Run the next prize safely, then switch into the audience presentation whenever the room is ready.";
+
+  useEffect(() => {
+    if (!canShowLiveExperience && viewMode !== "operator") {
+      setViewMode("operator");
+    }
+  }, [canShowLiveExperience, viewMode]);
 
   const summaryItems = useMemo(
     () => [
@@ -229,7 +253,19 @@ export default function App({ storage, now, createAttemptId, selectWinnerDepende
   }
 
   function handleFinishReveal() {
-    runLiveCommand("finishReveal", () => finishLiveReveal(state, { savedAt: getTimestamp(), ...withStorage(storage) }));
+    const attemptId = state.event.currentAttemptId;
+    if (state.event.phase !== "reelStopping" || !attemptId || revealCompletionAttemptRef.current === attemptId) {
+      return;
+    }
+
+    revealCompletionAttemptRef.current = attemptId;
+    runLiveCommand("finishReveal", () => {
+      const result = finishLiveReveal(state, { savedAt: getTimestamp(), ...withStorage(storage) });
+      if (!result.ok) {
+        revealCompletionAttemptRef.current = null;
+      }
+      return result;
+    });
   }
 
   function handleConfirmWinner() {
@@ -275,102 +311,111 @@ export default function App({ storage, now, createAttemptId, selectWinnerDepende
   }
 
   return (
-    <main className="app-shell">
-      <div className="app-frame">
-        <header className="hero-band" aria-label="Application overview">
-          <div className="hero-band__copy">
-            <p className="eyebrow">VPBank Lucky Draw</p>
-            <h1 className="app-title">Operator setup</h1>
-            <p className="hero-band__lede">
-              Prepare the participant roster, review six prizes, and move safely into the live draw flow.
-            </p>
-          </div>
-
-          <div className="hero-band__status">
-            <StatusMessage tone={heroStatus.tone} title={heroStatus.title}>
-              <p>{heroStatus.body}</p>
-            </StatusMessage>
-          </div>
-        </header>
-
-        {state.error && state.recovery.status !== "invalid" ? (
-          <StatusMessage tone="error" title="Something needs attention">
-            <p>{state.error.message}</p>
-            <div className="action-row">
-              <button type="button" className="button button--secondary" onClick={handleClearError}>
-                Dismiss
-              </button>
-            </div>
-          </StatusMessage>
-        ) : null}
-
-        {canShowNormalSetup && shouldShowSetupConfiguration ? (
-          <section className="dashboard-strip" aria-label="Current event status">
-            {summaryItems.map((item) => (
-              <div key={item.label} className="dashboard-metric">
-                <span className="dashboard-metric__label">{item.label}</span>
-                <strong className="dashboard-metric__value">{item.value}</strong>
-              </div>
-            ))}
-            <div className="dashboard-metric dashboard-metric--wide">
-              <span className="dashboard-metric__label">Current prize</span>
-              <strong className="dashboard-metric__value">{currentPrize?.name ?? "Prize unavailable"}</strong>
-            </div>
-            <div className="dashboard-metric dashboard-metric--wide">
-              <span className="dashboard-metric__label">Recovery</span>
-              <strong className="dashboard-metric__value">{state.recovery.status}</strong>
-            </div>
-          </section>
-        ) : null}
-
-        {shouldShowLiveOperator ? (
-          <LiveOperator
-            phase={state.event.phase}
-            currentPrize={currentPrize}
-            progress={prizeProgress}
-            eligibleCount={eligibleParticipantCount}
-            confirmedCount={confirmedWinnerCount}
-            absentCount={absentParticipantCount}
-            attemptCount={state.event.attempts.length}
-            currentAttempt={currentAttempt}
-            pendingWinner={pendingWinner}
-            confirmedWinners={confirmedWinners}
-            history={eventHistory}
-            primaryAction={primaryOperatorAction}
-            actionInFlight={liveActionInFlight !== null}
-            onStartCountdown={handleStartCountdown}
-            onStartDraw={handleStartDraw}
-            onSelectWinner={handleSelectWinner}
-            onFinishReveal={handleFinishReveal}
-            onConfirmWinner={handleConfirmWinner}
-            onMarkAbsent={handleMarkAbsent}
-            onAdvancePrize={handleAdvancePrize}
+    <main className={`app-shell${shouldShowPresentation ? " app-shell--presentation" : ""}`}>
+      <div className={`app-frame${shouldShowPresentation ? " app-frame--presentation" : ""}`}>
+        {shouldShowPresentation ? (
+          <PresentationStage
+            state={state}
+            onReturnToOperator={() => setViewMode("operator")}
+            onRevealComplete={handleFinishReveal}
           />
         ) : (
-          <OperatorSetup
-            state={state}
-            inputMode={inputMode}
-            pasteValue={pasteValue}
-            csvFileName={csvFileName}
-            startNewConfirmationOpen={startNewConfirmationOpen}
-            canApplyParticipants={canApplyParticipants}
-            canPrepareLiveDraw={canPrepareLiveDraw}
-            canStartLiveDraw={canStartLiveDraw}
-            onInputModeChange={setInputMode}
-            onPasteValueChange={setPasteValue}
-            onPreviewPaste={handlePreviewPaste}
-            onCsvFileSelected={(file) => {
-              void handleCsvFileSelected(file);
-            }}
-            onUseDefaultRoster={handleUseDefaultRoster}
-            onClearPreview={handleClearPreview}
-            onApplyParticipants={handleApplyParticipants}
-            onPrepareLiveDraw={handlePrepareLiveDraw}
-            onResumePreviousSession={handleResumePreviousSession}
-            onRequestStartNewSession={handleRequestStartNewSession}
-            onCancelStartNewSession={handleCancelStartNewSession}
-            onConfirmStartNewSession={handleConfirmStartNewSession}
-          />
+          <>
+            <header className="hero-band" aria-label="Application overview">
+              <div className="hero-band__copy">
+                <p className="eyebrow">VPBank Lucky Draw</p>
+                <h1 className="app-title">{pageTitle}</h1>
+                <p className="hero-band__lede">{pageLede}</p>
+              </div>
+
+              <div className="hero-band__status">
+                <StatusMessage tone={heroStatus.tone} title={heroStatus.title}>
+                  <p>{heroStatus.body}</p>
+                </StatusMessage>
+              </div>
+            </header>
+
+            {state.error && state.recovery.status !== "invalid" ? (
+              <StatusMessage tone="error" title="Something needs attention">
+                <p>{state.error.message}</p>
+                <div className="action-row">
+                  <button type="button" className="button button--secondary" onClick={handleClearError}>
+                    Dismiss
+                  </button>
+                </div>
+              </StatusMessage>
+            ) : null}
+
+            {canShowNormalSetup && shouldShowSetupConfiguration ? (
+              <section className="dashboard-strip" aria-label="Current event status">
+                {summaryItems.map((item) => (
+                  <div key={item.label} className="dashboard-metric">
+                    <span className="dashboard-metric__label">{item.label}</span>
+                    <strong className="dashboard-metric__value">{item.value}</strong>
+                  </div>
+                ))}
+                <div className="dashboard-metric dashboard-metric--wide">
+                  <span className="dashboard-metric__label">Current prize</span>
+                  <strong className="dashboard-metric__value">{currentPrize?.name ?? "Prize unavailable"}</strong>
+                </div>
+                <div className="dashboard-metric dashboard-metric--wide">
+                  <span className="dashboard-metric__label">Recovery</span>
+                  <strong className="dashboard-metric__value">{state.recovery.status}</strong>
+                </div>
+              </section>
+            ) : null}
+
+            {shouldShowLiveOperator ? (
+              <LiveOperator
+                phase={state.event.phase}
+                currentPrize={currentPrize}
+                progress={prizeProgress}
+                eligibleCount={eligibleParticipantCount}
+                confirmedCount={confirmedWinnerCount}
+                absentCount={absentParticipantCount}
+                attemptCount={state.event.attempts.length}
+                currentAttempt={currentAttempt}
+                pendingWinner={pendingWinner}
+                confirmedWinners={confirmedWinners}
+                history={eventHistory}
+                primaryAction={primaryOperatorAction}
+                actionInFlight={liveActionInFlight !== null}
+                onOpenPresentation={() => setViewMode("presentation")}
+                onStartCountdown={handleStartCountdown}
+                onStartDraw={handleStartDraw}
+                onSelectWinner={handleSelectWinner}
+                onFinishReveal={handleFinishReveal}
+                onConfirmWinner={handleConfirmWinner}
+                onMarkAbsent={handleMarkAbsent}
+                onAdvancePrize={handleAdvancePrize}
+              />
+            ) : (
+              <OperatorSetup
+                state={state}
+                inputMode={inputMode}
+                pasteValue={pasteValue}
+                csvFileName={csvFileName}
+                startNewConfirmationOpen={startNewConfirmationOpen}
+                canApplyParticipants={canApplyParticipants}
+                canPrepareLiveDraw={canPrepareLiveDraw}
+                canStartLiveDraw={canStartLiveDraw}
+                onInputModeChange={setInputMode}
+                onPasteValueChange={setPasteValue}
+                onPreviewPaste={handlePreviewPaste}
+                onCsvFileSelected={(file) => {
+                  void handleCsvFileSelected(file);
+                }}
+                onUseDefaultRoster={handleUseDefaultRoster}
+                onClearPreview={handleClearPreview}
+                onApplyParticipants={handleApplyParticipants}
+                onPrepareLiveDraw={handlePrepareLiveDraw}
+                onResumePreviousSession={handleResumePreviousSession}
+                onRequestStartNewSession={handleRequestStartNewSession}
+                onCancelStartNewSession={handleCancelStartNewSession}
+                onConfirmStartNewSession={handleConfirmStartNewSession}
+              />
+            )}
+          </>
         )}
       </div>
     </main>

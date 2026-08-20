@@ -63,6 +63,15 @@ export function selectConfirmedWinners(state: AppState): EventHistoryItem[] {
   return selectEventHistory(state).filter((item) => item.attempt.status === "confirmed");
 }
 
+export function selectConfirmedWinnerForCurrentPrize(state: AppState): EventHistoryItem | undefined {
+  const currentPrize = selectCurrentPrize(state);
+  if (!currentPrize) {
+    return undefined;
+  }
+
+  return selectConfirmedWinners(state).find((item) => item.prize?.id === currentPrize.id);
+}
+
 export function selectPrizeProgress(state: AppState): PrizeProgress {
   return {
     current: state.event.currentPrizeIndex + 1,

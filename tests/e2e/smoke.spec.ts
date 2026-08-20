@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-test("operator live flow confirms the first prize and advances", async ({ page }) => {
+test("operator live flow reveals the first winner in presentation and advances", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: /operator setup/i })).toBeVisible();
@@ -21,11 +22,18 @@ test("operator live flow confirms the first prize and advances", async ({ page }
   await expect(page.getByRole("button", { name: /select winner/i })).toBeVisible();
 
   await page.getByRole("button", { name: /select winner/i }).click();
-  await expect(page.locator(".winner-summary__code")).toHaveText(/^\d{4}$/);
-  await expect(page.getByRole("button", { name: /complete reveal/i })).toBeVisible();
+  const operatorWinnerCode = await page.locator(".winner-summary__code").textContent();
+  expect(operatorWinnerCode).toMatch(/^\d{4}$/);
 
-  await page.getByRole("button", { name: /complete reveal/i }).click();
+  await page.getByRole("button", { name: /open presentation/i }).click();
+  await expect(page.getByRole("button", { name: /return to operator/i })).toBeVisible();
+  await expect(page.locator('[data-testid="presentation-digit"]')).toHaveCount(4);
+  await expect(page.locator('[data-testid="presentation-digit"]')).toHaveText(operatorWinnerCode!.split(""));
+  await expect(page.getByText(/awaiting winner confirmation/i)).toBeVisible();
+
+  await page.getByRole("button", { name: /return to operator/i }).click();
   await expect(page.getByRole("button", { name: /confirm winner/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /complete reveal/i })).toHaveCount(0);
 
   await page.getByRole("button", { name: /confirm winner/i }).click();
   await expect(page.locator(".metric").filter({ hasText: "Confirmed" }).locator(".metric__value")).toHaveText("1");

@@ -16,6 +16,7 @@ export interface LiveOperatorProps {
   history: readonly EventHistoryItem[];
   primaryAction: PrimaryOperatorAction;
   actionInFlight?: boolean;
+  onOpenPresentation: () => void;
   onStartCountdown: () => void;
   onStartDraw: () => void;
   onSelectWinner: () => void;
@@ -39,6 +40,7 @@ export function LiveOperator({
   history,
   primaryAction,
   actionInFlight = false,
+  onOpenPresentation,
   onStartCountdown,
   onStartDraw,
   onSelectWinner,
@@ -59,7 +61,12 @@ export function LiveOperator({
               {currentPrize?.name ?? "Prize unavailable"}
             </h2>
           </div>
-          <span className="panel__badge panel__badge--success">Prize {progress.label}</span>
+          <div className="live-hero__actions">
+            <span className="panel__badge panel__badge--success">Prize {progress.label}</span>
+            <button type="button" className="button button--secondary" onClick={onOpenPresentation} disabled={actionInFlight}>
+              Open Presentation
+            </button>
+          </div>
         </div>
 
         <div className="live-status-grid">

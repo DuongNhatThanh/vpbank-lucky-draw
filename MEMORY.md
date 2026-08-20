@@ -5,10 +5,10 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 -->
 
 ## Active Phase & Goal
-**Current Task:** Phase 7 Live Operator Flow implemented; awaiting human review.
+**Current Task:** Phase 8A Presentation Mode + Reel System implemented; awaiting human review.
 **Next Steps:**
-1. Review the live operator flow for start countdown, start draw, persisted winner selection, reveal completion, confirm, absent/redraw, prize advancement, and event completion.
-2. After approval, continue to the next scoped phase without adding presentation mode, reels, audio, fullscreen, or XLSX until explicitly requested.
+1. Review the audience presentation toggle, reel-stopping reveal, pending winner replay, and event-complete winner board against the approved PRD and Tech Design.
+2. After approval, continue to the next scoped phase without adding audio, fullscreen, or XLSX until explicitly requested.
 
 ## Architectural Decisions
 *(Log specific choices made during the build here so future agents respect them)*
@@ -33,10 +33,14 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - 2026-08-20 - Phase 6A hardening clarified that `configurationLocked` prevents setup edits only; it does not block starting Prize 2..6 when the event is in a valid `ready` state.
 - 2026-08-20 - Phase 6B added an operator setup UI shell that drives startup recovery, default roster load, paste/CSV participant preview, explicit apply, six-prize review, and prepare-for-live-draw wiring without implementing presentation mode.
 - 2026-08-20 - Phase 7 added the live operator application flow: setup routes into a live operator screen after preparation, recovery resumes directly into the saved live phase, and every live transition persists the candidate `EventState` before committing it to React state.
+- 2026-08-20 - Phase 8A added a UI-local `viewMode` toggle between operator and presentation screens; the audience presentation never selects or mutates winners and only renders persisted event state.
+- 2026-08-20 - Reel animation is driven entirely from the saved `reelStopping` / `pendingWinner` state, so refresh or resume replays the same official winning code instead of generating a new result.
+- 2026-08-20 - Reel stopping now delegates reveal completion to the existing App controller after the fourth digit settles, with an attempt-keyed exactly-once guard that also covers remounts and reduced-motion timing.
+- 2026-08-20 - Presentation `prizeComplete` renders the confirmed winner for the current prize, while ready/drawing use neutral reels and countdown uses a 3-2-1 visual.
 
 ## Known Issues & Quirks
 *(Log current bugs or weird workarounds here)*
-- React scaffold, pure domain foundation, event state machine, persistence/recovery, participant import/validation, Phase 6A application state wiring, Phase 6B operator setup UI, and Phase 7 live operator flow exist; presentation mode, reels, audio, fullscreen, and XLSX parser support are not implemented yet.
+- React scaffold, pure domain foundation, event state machine, persistence/recovery, participant import/validation, Phase 6A application state wiring, Phase 6B operator setup UI, Phase 7 live operator flow, and Phase 8A presentation mode exist; audio, fullscreen, and XLSX parser support are not implemented yet.
 - In this Codex sandbox, Vitest/Vite config loading can fail with an esbuild parent-directory `Access is denied` error; rerunning `npm run test` or `npm run build` with approved unsandboxed execution passed.
 - Phase 2 Domain Foundation is approved.
 - Phase 3 Event State Machine is approved.
@@ -44,7 +48,9 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - Phase 5 Participant Import & Validation is approved.
 - Phase 6A Application State & Recovery Wiring is approved.
 - Phase 6B Operator Setup UI is approved.
-- Phase 7 Live Operator Flow is awaiting human review.
+- Phase 7 Live Operator Flow is approved.
+- Phase 8A Presentation Mode + Reel System is awaiting human review.
+- Presentation mode now uses the available VPBank logo asset from `public/vpbank-logo.webp`.
 - Exact XLSX package/version is still TBD; default candidate is a stable pinned browser-compatible SheetJS `xlsx` package.
 - Exact Vercel URL/domain, sound default state, reel/countdown timing, and default participant filename details will be finalized during implementation/rehearsal.
 
@@ -58,5 +64,6 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - [x] Event state machine
 - [x] Persistence and recovery
 - [x] Participant import and validation (approved)
-- [ ] Presentation mode
+- [x] Live operator flow (approved)
+- [ ] Presentation mode (implemented, awaiting review)
 - [ ] Rehearsal and launch
