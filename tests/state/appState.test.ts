@@ -540,6 +540,32 @@ describe("state", () => {
         state,
       );
       state = commitLiveState(finishLiveReveal(state, { storage, savedAt: NOW }), state);
+
+      if (prizeIndex === 1) {
+        const absentParticipantId = state.event.currentAttemptId
+          ? state.event.attempts.find((attempt) => attempt.id === state.event.currentAttemptId)?.participantId
+          : undefined;
+        expect(absentParticipantId).toBeDefined();
+        state = commitLiveState(markLiveWinnerAbsent(state, { storage, savedAt: SAVED_AT, resolvedAt: SAVED_AT }), state);
+        expect(state.event.currentPrizeIndex).toBe(1);
+        expect(state.event.participants.find((participant) => participant.id === absentParticipantId)?.status).toBe("absent");
+
+        state = commitLiveState(startLiveCountdown(state, { storage, savedAt: NOW }), state);
+        state = commitLiveState(startLiveDraw(state, { storage, savedAt: NOW }), state);
+        state = commitLiveState(
+          selectLiveWinner(state, {
+            storage,
+            savedAt: NOW,
+            attemptId: `attempt-${prizeIndex}-redraw`,
+            createdAt: NOW,
+            dependencies: firstEligibleDependencies(absentParticipantId),
+          }),
+          state,
+        );
+        expect(state.event.attempts.at(-1)?.participantId).not.toBe(absentParticipantId);
+        state = commitLiveState(finishLiveReveal(state, { storage, savedAt: NOW }), state);
+      }
+
       state = commitLiveState(confirmLiveWinner(state, { storage, savedAt: SAVED_AT, resolvedAt: SAVED_AT }), state);
 
       if (prizeIndex < 5) {
@@ -554,6 +580,13 @@ describe("state", () => {
     expect(selectConfirmedWinners(state)).toHaveLength(6);
     expect(new Set(selectConfirmedWinners(state).map((item) => item.participant?.code)).size).toBe(6);
     expect(state.event.currentPrizeIndex).toBe(5);
+    expect(state.event.currentAttemptId).toBeUndefined();
+    expect(state.event.participants.some((participant) => participant.status === "pending")).toBe(false);
+    expect(state.event.attempts.filter((attempt) => attempt.status === "absent")).toHaveLength(1);
+    expect(validateEventStateInvariants(state.event).valid).toBe(true);
+
+    const reloaded = loadEventState({ storage });
+    expect(reloaded).toEqual({ ok: true, status: "loaded", value: state.event });
   });
 
   it("resumes live states without reselecting winners", () => {
@@ -609,6 +642,47 @@ describe("state", () => {
     const completedStorage = new MemoryStorage();
     completedStorage.setItem(PERSISTENCE_KEY, JSON.stringify({ storageVersion: 1, savedAt: NOW, state: createCompletedState() }));
     expect(initializeAppState({ storage: completedStorage, now: NOW }).recovery).toEqual({ status: "noSession", reason: "completed" });
+  });
+
+  it("resumes countdown state without selecting a winner or creating a new attempt", () => {
+    const storage = new MemoryStorage();
+    const readyState = createLiveReadyAppState(storage);
+    const countdownState = commitLiveState(startLiveCountdown(readyState, { storage, savedAt: NOW }), readyState);
+
+    storage.setItem(PERSISTENCE_KEY, JSON.stringify({ storageVersion: 1, savedAt: NOW, state: countdownState.event }));
+    const startupState = initializeAppState({ storage, now: NOW });
+    expect(startupState.recovery.status).toBe("recoverable");
+
+    const resumed = resumeSavedSession(startupState, { storage });
+    expect(resumed.ok).toBe(true);
+    if (resumed.ok) {
+      expect(resumed.value.event.phase).toBe("countdown");
+      expect(resumed.value.event.currentPrizeIndex).toBe(countdownState.event.currentPrizeIndex);
+      expect(resumed.value.event.participants).toEqual(countdownState.event.participants);
+      expect(resumed.value.event.attempts).toEqual(countdownState.event.attempts);
+      expect(resumed.value.event.attempts).toHaveLength(0);
+      expect(resumed.value.event.currentAttemptId).toBeUndefined();
+    }
+  });
+
+  it("resumes drawing state without selecting a winner or creating a new attempt", () => {
+    const storage = new MemoryStorage();
+    const drawingState = createDrawingAppState(storage);
+
+    storage.setItem(PERSISTENCE_KEY, JSON.stringify({ storageVersion: 1, savedAt: NOW, state: drawingState.event }));
+    const startupState = initializeAppState({ storage, now: NOW });
+    expect(startupState.recovery.status).toBe("recoverable");
+
+    const resumed = resumeSavedSession(startupState, { storage });
+    expect(resumed.ok).toBe(true);
+    if (resumed.ok) {
+      expect(resumed.value.event.phase).toBe("drawing");
+      expect(resumed.value.event.currentPrizeIndex).toBe(drawingState.event.currentPrizeIndex);
+      expect(resumed.value.event.participants).toEqual(drawingState.event.participants);
+      expect(resumed.value.event.attempts).toEqual(drawingState.event.attempts);
+      expect(resumed.value.event.attempts).toHaveLength(0);
+      expect(resumed.value.event.currentAttemptId).toBeUndefined();
+    }
   });
 
   it("keeps the current app state unchanged when preview is cleared or errors are cleared", () => {

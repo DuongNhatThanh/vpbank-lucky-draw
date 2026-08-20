@@ -38,11 +38,12 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - 2026-08-20 - Reel stopping now delegates reveal completion to the existing App controller after the fourth digit settles, with an attempt-keyed exactly-once guard that also covers remounts and reduced-motion timing.
 - 2026-08-20 - Presentation `prizeComplete` renders the confirmed winner for the current prize, while ready/drawing use neutral reels and countdown uses a 3-2-1 visual.
 - 2026-08-20 - Phase 8A Presentation Mode + Reel System approved; Phase 8B adds UI-local fullscreen, non-blocking presentation audio, bounded celebration effects, and final event polish without changing EventState.
+- 2026-08-20 - Phase 9 rehearsal and launch-readiness documentation was added. The supplied local audio assets match the configured paths, and the remaining venue, fullscreen, audio, Vercel, offline, and browser-refresh checks require human rehearsal.
 - 2026-08-20 - Presentation audio uses named local placeholder paths under `/audio/`; missing assets or rejected playback never block the draw, and reduced motion replaces moving confetti with a static glow.
 
 ## Known Issues & Quirks
 *(Log current bugs or weird workarounds here)*
-- React scaffold, pure domain foundation, event state machine, persistence/recovery, participant import/validation, Phase 6A application state wiring, Phase 6B operator setup UI, Phase 7 live operator flow, and Phase 8A presentation mode exist; audio, fullscreen, and XLSX parser support are not implemented yet.
+- React scaffold, pure domain foundation, event state machine, persistence/recovery, participant import/validation, Phase 6A application state wiring, Phase 6B operator setup UI, Phase 7 live operator flow, and Phase 8A/8B presentation polish exist; XLSX parser support remains intentionally deferred.
 - In this Codex sandbox, Vitest/Vite config loading can fail with an esbuild parent-directory `Access is denied` error; rerunning `npm run test` or `npm run build` with approved unsandboxed execution passed.
 - Phase 2 Domain Foundation is approved.
 - Phase 3 Event State Machine is approved.
@@ -52,7 +53,8 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - Phase 6B Operator Setup UI is approved.
 - Phase 7 Live Operator Flow is approved.
 - Phase 8A Presentation Mode + Reel System is approved.
-- Phase 8B Fullscreen + Audio + Confetti + Final Event Polish is awaiting human review.
+- Phase 8B Fullscreen + Audio + Confetti + Final Event Polish is approved.
+- Phase 9 Rehearsal & Launch Readiness is implemented and awaiting human rehearsal.
 - Presentation mode now uses the available VPBank logo asset from `public/vpbank-logo.webp`.
 - Exact XLSX package/version is still TBD; default candidate is a stable pinned browser-compatible SheetJS `xlsx` package.
 - Exact Vercel URL/domain, sound default state, reel/countdown timing, and default participant filename details will be finalized during implementation/rehearsal.
@@ -69,5 +71,5 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - [x] Participant import and validation (approved)
 - [x] Live operator flow (approved)
 - [x] Presentation mode and reels (approved)
-- [ ] Fullscreen, audio, confetti, and final event polish (implemented, awaiting review)
-- [ ] Rehearsal and launch
+- [x] Fullscreen, audio, confetti, and final event polish
+- [ ] Rehearsal and launch (readiness work implemented; human rehearsal required)
