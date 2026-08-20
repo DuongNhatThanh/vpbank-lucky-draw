@@ -36,7 +36,7 @@ Needs to open a shared URL, verify participants, always know the current prize, 
 
 ### Secondary — Audience
 
-Needs to understand the current prize, draw progress, winning four-digit code, winner name when available, and Grand Prize status. The audience must not see configuration, import controls, debug information, reset controls, or operator instructions.
+Needs to understand the current prize, draw progress, winning four-digit code, winner name when available, and Grand Prize status. The audience must not see configuration, import controls, debug information, reset controls, or operator instructions. The four-digit code remains the primary winner identity when no name exists.
 
 ### Setup user — Event Organizer
 
@@ -130,6 +130,7 @@ Example:
 Validation must report at least rows received, valid participants, duplicate codes and invalid rows.
 
 Rules:
+- The 4-digit lucky number is the canonical raffle identity.
 - Codes display as exactly four digits.
 - Leading zeros are preserved.
 - Duplicate codes are invalid.
@@ -138,10 +139,12 @@ Rules:
 - MC explicitly applies the validated list.
 - Invalid configuration cannot start a live draw.
 - Participant configuration locks after the first draw.
+- Participant name is optional metadata only and is never required for draw eligibility, secure winner selection, pending winner state, winner confirmation, absent handling, redraw, winner history, persistence/recovery, or event completion.
 
 **Acceptance criteria**
 - [ ] Default participant data loads.
 - [ ] `0027` remains `0027`.
+- [ ] Number-only rosters are valid.
 - [ ] Duplicate and invalid records are reported.
 - [ ] Paste, CSV and XLSX imports work.
 - [ ] Preview occurs before Apply.
@@ -239,7 +242,7 @@ The presentation uses four vertical reels in one unified visual object. Reels sp
 After confirmation:
 1. Hold winning code.
 2. Show `CONGRATULATIONS`.
-3. Show winner name if available.
+3. Show winner name if available, but keep the 4-digit code as the primary winner identity.
 4. Trigger celebration.
 5. Hold long enough for audience recognition/photos.
 
@@ -553,7 +556,7 @@ Implementation agents must treat these as decided unless the PRD is explicitly r
 14. Recovery offers Resume Previous Session / Start New Session.
 15. Single-window Presentation Mode with mirrored event display.
 16. Basic sound effects plus Sound On/Off.
-17. Winner name displays only when available.
+17. Winner name displays only when available, with the 4-digit code remaining primary.
 18. Four vertical reels are the core presentation metaphor.
 19. VPBank branding dominates; casino imagery is prohibited.
 20. Grand Prize has distinct presentation treatment.

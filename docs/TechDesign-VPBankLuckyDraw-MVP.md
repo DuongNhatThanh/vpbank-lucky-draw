@@ -155,8 +155,8 @@ type ParticipantStatus = "eligible" | "pending" | "confirmed" | "absent";
 
 interface Participant {
   id: string;
-  code: string;
-  name?: string;
+  code: string; // required, exactly 4 digits
+  name?: string; // optional metadata only
   status: ParticipantStatus;
 }
 
@@ -205,6 +205,8 @@ interface EventState {
 ```
 
 Derived values such as eligible participants, confirmed winners and current prize should be computed with selectors rather than duplicated in state.
+
+`code` is the canonical raffle identity. `name` must never participate in eligibility logic, RNG, uniqueness rules, state-machine correctness, or recovery correctness. Participant IDs may be deterministically derived from `code` for import/application helpers, but duplicate detection and identity checks must always use `code`.
 
 ---
 
@@ -302,7 +304,7 @@ If the browser refreshes after selection but before reveal finishes, Resume must
 ## 8. Participant Import
 
 Supported sources:
-- Default JSON
+- Default typed project data from `src/data/defaultParticipants.ts`
 - Paste/manual text
 - CSV
 - XLSX
@@ -322,13 +324,15 @@ Validation pipeline:
 ```text
 Raw rows
 → trim/normalize
-→ validate four digits
+→ validate four-digit code
 → preserve leading zeros
-→ normalize optional name
-→ detect duplicates
+→ normalize optional name metadata
+→ detect duplicate codes
 → preview report
 → explicit Apply
 ```
+
+Number-only imports are valid. The system must fully operate when `name` is absent on every participant row.
 
 Result:
 
@@ -394,6 +398,8 @@ Read saved envelope
 `Start New Session` requires confirmation.
 
 Version initially with `storageVersion = 1`, `schemaVersion = 1`.
+
+Recovery must not depend on participant names. A roster containing only four-digit codes remains fully recoverable as long as the invariant set is satisfied.
 
 ---
 
@@ -770,7 +776,7 @@ After the event, if maintained:
 | Exact reel/countdown timing? | TBD | Tune during rehearsal |
 | Rehearsal/Test Mode before event? | P1 | Only after P0 stable |
 | Results export before event? | P1 | Defer unless time remains |
-| Default participant filename? | Minor | `public/data/participants.json` |
+| Default participant source? | Minor | `src/data/defaultParticipants.ts` |
 
 ---
 
