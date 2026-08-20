@@ -146,6 +146,82 @@ textarea {
   gap: 20px;
 }
 
+.live-operator {
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  align-items: start;
+}
+
+.live-hero,
+.history-panel {
+  min-width: 0;
+}
+
+.live-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.live-actions {
+  margin-top: 16px;
+}
+
+.winner-summary {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.winner-summary__label,
+.history-item__status {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #58705d;
+}
+
+.winner-summary__code {
+  font-size: 40px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.winner-summary-list,
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.winner-summary-list li,
+.history-item {
+  border: 1px solid #d9e2da;
+  border-radius: 8px;
+  background: #f9fbf9;
+  padding: 12px 14px;
+  display: grid;
+  gap: 4px;
+}
+
+.history-item--confirmed {
+  border-color: #1f6f3a;
+}
+
+.history-item--absent {
+  border-color: #a36c0c;
+}
+
+.history-item__code {
+  font-size: 20px;
+}
+
+.history-item__prize,
+.history-item__name {
+  color: #415648;
+}
+
 .panel,
 .status-message {
   border: 1px solid #d5dfd6;
@@ -561,6 +637,7 @@ input[type="file"] {
 @media (max-width: 1080px) {
   .hero-band,
   .operator-grid,
+  .live-operator,
   .dashboard-strip {
     grid-template-columns: 1fr;
   }
@@ -586,7 +663,8 @@ input[type="file"] {
 
   .details-grid,
   .details-grid--single,
-  .metric-grid {
+  .metric-grid,
+  .live-status-grid {
     grid-template-columns: 1fr;
   }
 

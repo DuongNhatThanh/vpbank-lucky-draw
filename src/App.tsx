@@ -1,19 +1,29 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { MutableRefObject } from "react";
 import { DEFAULT_PARTICIPANTS } from "./data/defaultParticipants";
+import type { EventMachineDependencies } from "./domain/eventMachine";
 import type { AppResult } from "./domain/types";
 import { previewParticipantsFromCsv, previewParticipantsFromPaste } from "./services/participantImport";
 import type { StorageLike } from "./services/persistence";
+import { LiveOperator } from "./components/operator/LiveOperator";
 import { OperatorSetup } from "./components/operator/OperatorSetup";
 import { StatusMessage } from "./components/shared/StatusMessage";
 import type { AppState } from "./state/actions";
 import {
+  advanceLivePrize,
   applyParticipantsToAppState,
   clearApplicationError,
   clearParticipantPreview,
+  confirmLiveWinner,
+  finishLiveReveal,
   initializeAppState,
+  markLiveWinnerAbsent,
   prepareEventForLiveDraw,
   resumeSavedSession,
+  selectLiveWinner,
   setParticipantPreview,
+  startLiveCountdown,
+  startLiveDraw,
   startNewSession,
 } from "./state/appController";
 import {
@@ -22,23 +32,44 @@ import {
   selectCanPrepareLiveDraw,
   selectCanStartLiveDraw,
   selectConfirmedWinnerCount,
+  selectConfirmedWinners,
+  selectCurrentAttempt,
   selectCurrentPrize,
   selectEligibleParticipantCount,
+  selectEventHistory,
+  selectCurrentPendingWinner,
+  selectPrimaryOperatorAction,
+  selectPrizeProgress,
   selectPendingParticipant,
 } from "./state/selectors";
+
+export type LiveCommandName =
+  | "startCountdown"
+  | "startDraw"
+  | "selectWinner"
+  | "finishReveal"
+  | "confirmWinner"
+  | "markAbsent"
+  | "advancePrize";
 
 export interface AppProps {
   storage?: StorageLike;
   now?: string;
+  createAttemptId?: () => string;
+  selectWinnerDependencies?: EventMachineDependencies;
+  onBeforeLiveCommandCommit?: (command: LiveCommandName) => void;
 }
 
-export default function App({ storage, now }: AppProps) {
+export default function App({ storage, now, createAttemptId, selectWinnerDependencies, onBeforeLiveCommandCommit }: AppProps) {
   const [bootTime] = useState(() => now ?? new Date().toISOString());
   const [state, setState] = useState<AppState>(() => initializeAppState({ now: bootTime, ...withStorage(storage) }));
   const [inputMode, setInputMode] = useState<"paste" | "csv">("paste");
   const [pasteValue, setPasteValue] = useState(() => serializeDefaultRoster(DEFAULT_PARTICIPANTS));
   const [csvFileName, setCsvFileName] = useState<string | null>(null);
   const [startNewConfirmationOpen, setStartNewConfirmationOpen] = useState(false);
+  const [liveActionInFlight, setLiveActionInFlight] = useState<LiveCommandName | null>(null);
+  const attemptCounterRef = useRef(0);
+  const liveActionInFlightRef = useRef<LiveCommandName | null>(null);
   const getTimestamp = () => now ?? new Date().toISOString();
 
   useEffect(() => {
@@ -49,15 +80,30 @@ export default function App({ storage, now }: AppProps) {
     }
   }, [state.error, state.recovery.status]);
 
+  useEffect(() => {
+    if (liveActionInFlightRef.current) {
+      liveActionInFlightRef.current = null;
+      setLiveActionInFlight(null);
+    }
+  }, [state.event, state.error]);
+
   const currentPrize = selectCurrentPrize(state);
+  const currentAttempt = selectCurrentAttempt(state);
   const eligibleParticipantCount = selectEligibleParticipantCount(state);
   const confirmedWinnerCount = selectConfirmedWinnerCount(state);
   const absentParticipantCount = selectAbsentParticipantCount(state);
   const pendingParticipant = selectPendingParticipant(state);
+  const pendingWinner = selectCurrentPendingWinner(state);
+  const prizeProgress = selectPrizeProgress(state);
+  const primaryOperatorAction = selectPrimaryOperatorAction(state);
+  const eventHistory = selectEventHistory(state);
+  const confirmedWinners = selectConfirmedWinners(state);
   const canApplyParticipants = selectCanApplyParticipants(state);
   const canPrepareLiveDraw = selectCanPrepareLiveDraw(state);
   const canStartLiveDraw = selectCanStartLiveDraw(state);
   const canShowNormalSetup = state.recovery.status === "noSession" || state.recovery.status === "resumed";
+  const shouldShowSetupConfiguration = canShowNormalSetup && state.event.phase === "setup";
+  const shouldShowLiveOperator = canShowNormalSetup && state.event.phase !== "setup";
   const heroStatus = getHeroStatus(state, canStartLiveDraw);
 
   const summaryItems = useMemo(
@@ -81,6 +127,25 @@ export default function App({ storage, now }: AppProps) {
       ...current,
       error: nextStateResult.error,
     }));
+  }
+
+  function runLiveCommand(command: LiveCommandName, operation: () => AppResult<AppState>) {
+    if (liveActionInFlightRef.current) {
+      return;
+    }
+
+    liveActionInFlightRef.current = command;
+    setLiveActionInFlight(command);
+
+    try {
+      const result = operation();
+      onBeforeLiveCommandCommit?.(command);
+      commit(result);
+    } catch (error) {
+      liveActionInFlightRef.current = null;
+      setLiveActionInFlight(null);
+      throw error;
+    }
   }
 
   function handlePreviewPaste() {
@@ -141,6 +206,50 @@ export default function App({ storage, now }: AppProps) {
     commit(result);
   }
 
+  function handleStartCountdown() {
+    runLiveCommand("startCountdown", () => startLiveCountdown(state, { savedAt: getTimestamp(), ...withStorage(storage) }));
+  }
+
+  function handleStartDraw() {
+    runLiveCommand("startDraw", () => startLiveDraw(state, { savedAt: getTimestamp(), ...withStorage(storage) }));
+  }
+
+  function handleSelectWinner() {
+    runLiveCommand("selectWinner", () => {
+      const timestamp = getTimestamp();
+      const attemptId = createAttemptId ? createAttemptId() : createBrowserAttemptId(attemptCounterRef);
+      return selectLiveWinner(state, {
+        attemptId,
+        createdAt: timestamp,
+        savedAt: timestamp,
+        ...(selectWinnerDependencies ? { dependencies: selectWinnerDependencies } : {}),
+        ...withStorage(storage),
+      });
+    });
+  }
+
+  function handleFinishReveal() {
+    runLiveCommand("finishReveal", () => finishLiveReveal(state, { savedAt: getTimestamp(), ...withStorage(storage) }));
+  }
+
+  function handleConfirmWinner() {
+    runLiveCommand("confirmWinner", () => {
+      const timestamp = getTimestamp();
+      return confirmLiveWinner(state, { resolvedAt: timestamp, savedAt: timestamp, ...withStorage(storage) });
+    });
+  }
+
+  function handleMarkAbsent() {
+    runLiveCommand("markAbsent", () => {
+      const timestamp = getTimestamp();
+      return markLiveWinnerAbsent(state, { resolvedAt: timestamp, savedAt: timestamp, ...withStorage(storage) });
+    });
+  }
+
+  function handleAdvancePrize() {
+    runLiveCommand("advancePrize", () => advanceLivePrize(state, { savedAt: getTimestamp(), ...withStorage(storage) }));
+  }
+
   function handleResumePreviousSession() {
     const result = resumeSavedSession(state, withStorage(storage));
     commit(result);
@@ -195,7 +304,7 @@ export default function App({ storage, now }: AppProps) {
           </StatusMessage>
         ) : null}
 
-        {canShowNormalSetup ? (
+        {canShowNormalSetup && shouldShowSetupConfiguration ? (
           <section className="dashboard-strip" aria-label="Current event status">
             {summaryItems.map((item) => (
               <div key={item.label} className="dashboard-metric">
@@ -214,30 +323,55 @@ export default function App({ storage, now }: AppProps) {
           </section>
         ) : null}
 
-        <OperatorSetup
-          state={state}
-          inputMode={inputMode}
-          pasteValue={pasteValue}
-          csvFileName={csvFileName}
-          startNewConfirmationOpen={startNewConfirmationOpen}
-          canApplyParticipants={canApplyParticipants}
-          canPrepareLiveDraw={canPrepareLiveDraw}
-          canStartLiveDraw={canStartLiveDraw}
-          onInputModeChange={setInputMode}
-          onPasteValueChange={setPasteValue}
-          onPreviewPaste={handlePreviewPaste}
-          onCsvFileSelected={(file) => {
-            void handleCsvFileSelected(file);
-          }}
-          onUseDefaultRoster={handleUseDefaultRoster}
-          onClearPreview={handleClearPreview}
-          onApplyParticipants={handleApplyParticipants}
-          onPrepareLiveDraw={handlePrepareLiveDraw}
-          onResumePreviousSession={handleResumePreviousSession}
-          onRequestStartNewSession={handleRequestStartNewSession}
-          onCancelStartNewSession={handleCancelStartNewSession}
-          onConfirmStartNewSession={handleConfirmStartNewSession}
-        />
+        {shouldShowLiveOperator ? (
+          <LiveOperator
+            phase={state.event.phase}
+            currentPrize={currentPrize}
+            progress={prizeProgress}
+            eligibleCount={eligibleParticipantCount}
+            confirmedCount={confirmedWinnerCount}
+            absentCount={absentParticipantCount}
+            attemptCount={state.event.attempts.length}
+            currentAttempt={currentAttempt}
+            pendingWinner={pendingWinner}
+            confirmedWinners={confirmedWinners}
+            history={eventHistory}
+            primaryAction={primaryOperatorAction}
+            actionInFlight={liveActionInFlight !== null}
+            onStartCountdown={handleStartCountdown}
+            onStartDraw={handleStartDraw}
+            onSelectWinner={handleSelectWinner}
+            onFinishReveal={handleFinishReveal}
+            onConfirmWinner={handleConfirmWinner}
+            onMarkAbsent={handleMarkAbsent}
+            onAdvancePrize={handleAdvancePrize}
+          />
+        ) : (
+          <OperatorSetup
+            state={state}
+            inputMode={inputMode}
+            pasteValue={pasteValue}
+            csvFileName={csvFileName}
+            startNewConfirmationOpen={startNewConfirmationOpen}
+            canApplyParticipants={canApplyParticipants}
+            canPrepareLiveDraw={canPrepareLiveDraw}
+            canStartLiveDraw={canStartLiveDraw}
+            onInputModeChange={setInputMode}
+            onPasteValueChange={setPasteValue}
+            onPreviewPaste={handlePreviewPaste}
+            onCsvFileSelected={(file) => {
+              void handleCsvFileSelected(file);
+            }}
+            onUseDefaultRoster={handleUseDefaultRoster}
+            onClearPreview={handleClearPreview}
+            onApplyParticipants={handleApplyParticipants}
+            onPrepareLiveDraw={handlePrepareLiveDraw}
+            onResumePreviousSession={handleResumePreviousSession}
+            onRequestStartNewSession={handleRequestStartNewSession}
+            onCancelStartNewSession={handleCancelStartNewSession}
+            onConfirmStartNewSession={handleConfirmStartNewSession}
+          />
+        )}
       </div>
     </main>
   );
@@ -251,6 +385,16 @@ function serializeDefaultRoster(participants: readonly { code: string; name?: st
 
 function withStorage(storage?: StorageLike): { storage?: StorageLike } {
   return storage ? { storage } : {};
+}
+
+function createBrowserAttemptId(counterRef: MutableRefObject<number>): string {
+  counterRef.current += 1;
+
+  if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
+    return `attempt-${globalThis.crypto.randomUUID()}`;
+  }
+
+  return `attempt-${Date.now().toString(36)}-${counterRef.current}`;
 }
 
 function getHeroStatus(
@@ -286,10 +430,33 @@ function getHeroStatus(
         };
       }
 
+      if (state.event.phase !== "setup") {
+        return {
+          tone: "info",
+          title: `Live phase: ${formatLivePhase(state.event.phase)}`,
+          body: "Continue the active prize flow from the live operator screen.",
+        };
+      }
+
       return {
         tone: "info",
         title: "Setup is ready for participant review",
         body: "Load the default roster or paste a participant list to start validation.",
       };
   }
+}
+
+function formatLivePhase(phase: AppState["event"]["phase"]): string {
+  const labels: Record<AppState["event"]["phase"], string> = {
+    setup: "Setup",
+    ready: "Ready",
+    countdown: "Countdown",
+    drawing: "Drawing",
+    reelStopping: "Reel stopping",
+    pendingWinner: "Pending winner",
+    prizeComplete: "Prize complete",
+    eventComplete: "Event complete",
+  };
+
+  return labels[phase];
 }

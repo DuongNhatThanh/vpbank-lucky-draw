@@ -33,6 +33,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         event: action.event,
         error: null,
       };
+    case "COMMIT_EVENT_STATE":
+      return {
+        ...state,
+        event: action.event,
+        error: null,
+      };
     case "RESUME_SAVED_SESSION":
       return {
         ...state,

@@ -4,28 +4,43 @@ import { validateEventStateInvariants } from "../../src/domain/invariants";
 import { previewParticipantsFromCsv, previewParticipantsFromPaste } from "../../src/services/participantImport";
 import { loadEventState, PERSISTENCE_KEY, saveEventState } from "../../src/services/persistence";
 import {
+  advanceLivePrize,
   applyParticipantsToAppState,
   clearApplicationError,
   clearParticipantPreview,
+  confirmLiveWinner,
   initializeAppState,
+  finishLiveReveal,
+  markLiveWinnerAbsent,
   prepareEventForLiveDraw,
   resumeSavedSession,
   setParticipantPreview,
+  selectLiveWinner,
+  startLiveCountdown,
+  startLiveDraw,
   startNewSession,
 } from "../../src/state/appController";
 import { createInitialAppState, createInitialEventState } from "../../src/state/initialState";
+import type { AppState } from "../../src/state/actions";
 import {
   selectAbsentParticipantCount,
   selectCanApplyParticipants,
   selectCanPrepareLiveDraw,
   selectCanStartLiveDraw,
   selectConfirmedWinnerCount,
+  selectConfirmedWinners,
   selectCurrentPrize,
+  selectCurrentAttempt,
   selectEligibleParticipantCount,
+  selectEventHistory,
+  selectPrimaryOperatorAction,
+  selectPrizeProgress,
+  selectCurrentPendingWinner,
   selectHasRecoverableSession,
   selectPendingParticipant,
 } from "../../src/state/selectors";
 import { MemoryStorage } from "../helpers/memoryStorage";
+import type { AppResult } from "../../src/domain/types";
 
 const NOW = "2026-08-20T08:00:00.000Z";
 const SAVED_AT = "2026-08-20T08:05:00.000Z";
@@ -375,6 +390,227 @@ describe("state", () => {
     }
   });
 
+  it("runs the full live operator flow with persistence after each transition", () => {
+    const storage = new MemoryStorage();
+    let state = createLiveReadyAppState(storage);
+    expect(storage.peek(PERSISTENCE_KEY)).not.toBeNull();
+    expect(selectPrizeProgress(state).label).toBe("1/6");
+
+    state = commitLiveState(startLiveCountdown(state, { storage, savedAt: NOW }), state);
+    expect(state.event.phase).toBe("countdown");
+
+    state = commitLiveState(startLiveDraw(state, { storage, savedAt: NOW }), state);
+    expect(state.event.phase).toBe("drawing");
+
+    state = commitLiveState(
+      selectLiveWinner(state, {
+        storage,
+        savedAt: NOW,
+        attemptId: "attempt-0",
+        createdAt: NOW,
+        dependencies: firstEligibleDependencies(),
+      }),
+      state,
+    );
+    expect(state.event.phase).toBe("reelStopping");
+    expect(state.event.currentAttemptId).toBe("attempt-0");
+
+    state = commitLiveState(finishLiveReveal(state, { storage, savedAt: NOW }), state);
+    expect(state.event.phase).toBe("pendingWinner");
+    expect(selectCurrentPendingWinner({ ...createInitialAppState(NOW), event: state.event })?.id).toBeDefined();
+
+    state = commitLiveState(confirmLiveWinner(state, { storage, savedAt: SAVED_AT, resolvedAt: SAVED_AT }), state);
+    expect(state.event.phase).toBe("prizeComplete");
+
+    state = commitLiveState(advanceLivePrize(state, { storage, savedAt: NOW }), state);
+    expect(state.event.phase).toBe("ready");
+    expect(state.event.currentPrizeIndex).toBe(1);
+  });
+
+  it("keeps the current app state unchanged when select winner persistence fails", () => {
+    const storage = new MemoryStorage();
+    const state = createDrawingAppState(storage);
+    const snapshot = structuredClone(state);
+
+    const result = selectLiveWinner(state, {
+      storage: new MemoryStorage({ setItem: new Error("boom") }),
+      savedAt: NOW,
+      attemptId: "attempt-0",
+      createdAt: NOW,
+      dependencies: firstEligibleDependencies(),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(state).toEqual(snapshot);
+  });
+
+  it("keeps the current app state unchanged when confirm persistence fails", () => {
+    const state = createPendingWinnerAppState();
+    const snapshot = structuredClone(state);
+
+    const result = confirmLiveWinner(state, {
+      storage: new MemoryStorage({ setItem: new Error("boom") }),
+      savedAt: NOW,
+      resolvedAt: SAVED_AT,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(state).toEqual(snapshot);
+  });
+
+  it("keeps the current app state unchanged when absent persistence fails", () => {
+    const state = createPendingWinnerAppState();
+    const snapshot = structuredClone(state);
+
+    const result = markLiveWinnerAbsent(state, {
+      storage: new MemoryStorage({ setItem: new Error("boom") }),
+      savedAt: NOW,
+      resolvedAt: SAVED_AT,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(state).toEqual(snapshot);
+  });
+
+  it("keeps the current app state unchanged when advance prize persistence fails", () => {
+    const state = createPrizeCompleteAppState();
+    const snapshot = structuredClone(state);
+
+    const result = advanceLivePrize(state, {
+      storage: new MemoryStorage({ setItem: new Error("boom") }),
+      savedAt: NOW,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(state).toEqual(snapshot);
+  });
+
+  it("supports absent redraw on the same prize and excludes the absent code", () => {
+    const storage = new MemoryStorage();
+    let state = createDrawingAppState(storage);
+    state = commitLiveState(
+      selectLiveWinner(state, {
+        storage,
+        savedAt: NOW,
+        attemptId: "attempt-0",
+        createdAt: NOW,
+        dependencies: firstEligibleDependencies(),
+      }),
+      state,
+    );
+    state = commitLiveState(finishLiveReveal(state, { storage, savedAt: NOW }), state);
+    const absentCode = state.event.participants.find((participant) => participant.status === "pending")?.code;
+    expect(absentCode).toBeDefined();
+    state = commitLiveState(markLiveWinnerAbsent(state, { storage, savedAt: SAVED_AT, resolvedAt: SAVED_AT }), state);
+    expect(state.event.phase).toBe("ready");
+    expect(state.event.currentPrizeIndex).toBe(0);
+
+    state = commitLiveState(startLiveCountdown(state, { storage, savedAt: NOW }), state);
+    state = commitLiveState(startLiveDraw(state, { storage, savedAt: NOW }), state);
+    state = commitLiveState(
+      selectLiveWinner(state, {
+        storage,
+        savedAt: NOW,
+        attemptId: "attempt-1",
+        createdAt: NOW,
+        dependencies: firstEligibleDependencies(absentCode),
+      }),
+      state,
+    );
+
+    expect(state.event.attempts.at(-1)?.participantId).not.toBe(`participant-${absentCode}`);
+  });
+
+  it("drives all six prizes through the application layer to event completion", () => {
+    const storage = new MemoryStorage();
+    let state = initializeAppState({ storage, now: NOW });
+    state = commitLiveState(prepareEventForLiveDraw(state, { storage, savedAt: NOW }), state);
+
+    for (let prizeIndex = 0; prizeIndex < 6; prizeIndex += 1) {
+      state = commitLiveState(startLiveCountdown(state, { storage, savedAt: NOW }), state);
+      state = commitLiveState(startLiveDraw(state, { storage, savedAt: NOW }), state);
+      state = commitLiveState(
+        selectLiveWinner(state, {
+          storage,
+          savedAt: NOW,
+          attemptId: `attempt-${prizeIndex}`,
+          createdAt: NOW,
+          dependencies: firstEligibleDependencies(),
+        }),
+        state,
+      );
+      state = commitLiveState(finishLiveReveal(state, { storage, savedAt: NOW }), state);
+      state = commitLiveState(confirmLiveWinner(state, { storage, savedAt: SAVED_AT, resolvedAt: SAVED_AT }), state);
+
+      if (prizeIndex < 5) {
+        state = commitLiveState(advanceLivePrize(state, { storage, savedAt: NOW }), state);
+      } else {
+        expect(state.event.phase).toBe("prizeComplete");
+        state = commitLiveState(advanceLivePrize(state, { storage, savedAt: NOW }), state);
+      }
+    }
+
+    expect(state.event.phase).toBe("eventComplete");
+    expect(selectConfirmedWinners(state)).toHaveLength(6);
+    expect(new Set(selectConfirmedWinners(state).map((item) => item.participant?.code)).size).toBe(6);
+    expect(state.event.currentPrizeIndex).toBe(5);
+  });
+
+  it("resumes live states without reselecting winners", () => {
+    const storage = new MemoryStorage();
+    const readyState = createLiveReadyAppState(storage);
+    const drawingState = commitLiveState(startLiveCountdown(readyState, { storage, savedAt: NOW }), readyState);
+    const liveState = commitLiveState(startLiveDraw(drawingState, { storage, savedAt: NOW }), drawingState);
+    const selectedState = commitLiveState(
+      selectLiveWinner(liveState, {
+        storage,
+        savedAt: NOW,
+        attemptId: "attempt-0",
+        createdAt: NOW,
+        dependencies: firstEligibleDependencies(),
+      }),
+      liveState,
+    );
+
+    storage.setItem(PERSISTENCE_KEY, JSON.stringify({ storageVersion: 1, savedAt: NOW, state: selectedState.event }));
+    const resumedReelState = initializeAppState({ storage, now: NOW });
+    expect(resumedReelState.recovery.status).toBe("recoverable");
+    const resumedReel = resumeSavedSession(resumedReelState, { storage });
+    expect(resumedReel.ok).toBe(true);
+    if (resumedReel.ok) {
+      expect(resumedReel.value.event).toEqual(selectedState.event);
+    }
+
+    const pendingState = commitLiveState(finishLiveReveal(selectedState, { storage, savedAt: NOW }), selectedState);
+    expect(selectCurrentAttempt(pendingState)).toBeDefined();
+    expect(selectCurrentPendingWinner(pendingState)?.code).toBeDefined();
+    expect(selectEventHistory(pendingState)).toHaveLength(0);
+    expect(selectPrimaryOperatorAction(pendingState)).toBe("confirmOrAbsent");
+
+    storage.setItem(PERSISTENCE_KEY, JSON.stringify({ storageVersion: 1, savedAt: NOW, state: pendingState.event }));
+    const resumedPendingState = initializeAppState({ storage, now: NOW });
+    expect(resumedPendingState.recovery.status).toBe("recoverable");
+    const resumedPending = resumeSavedSession(resumedPendingState, { storage });
+    expect(resumedPending.ok).toBe(true);
+    if (resumedPending.ok) {
+      expect(resumedPending.value.event).toEqual(pendingState.event);
+    }
+
+    const prizeCompleteState = commitLiveState(confirmLiveWinner(pendingState, { storage, savedAt: NOW, resolvedAt: SAVED_AT }), pendingState);
+    storage.setItem(PERSISTENCE_KEY, JSON.stringify({ storageVersion: 1, savedAt: NOW, state: prizeCompleteState.event }));
+    const resumedPrizeCompleteState = initializeAppState({ storage, now: NOW });
+    expect(resumedPrizeCompleteState.recovery.status).toBe("recoverable");
+    const resumedPrizeComplete = resumeSavedSession(resumedPrizeCompleteState, { storage });
+    expect(resumedPrizeComplete.ok).toBe(true);
+    if (resumedPrizeComplete.ok) {
+      expect(resumedPrizeComplete.value.event).toEqual(prizeCompleteState.event);
+    }
+
+    const completedStorage = new MemoryStorage();
+    completedStorage.setItem(PERSISTENCE_KEY, JSON.stringify({ storageVersion: 1, savedAt: NOW, state: createCompletedState() }));
+    expect(initializeAppState({ storage: completedStorage, now: NOW }).recovery).toEqual({ status: "noSession", reason: "completed" });
+  });
+
   it("keeps the current app state unchanged when preview is cleared or errors are cleared", () => {
     const state = {
       ...createInitialAppState(NOW),
@@ -533,5 +769,71 @@ function createCompletedState() {
     configurationLocked: true,
     soundEnabled: true,
     updatedAt: NOW,
+  };
+}
+
+function commitLiveState(result: AppResult<AppState>, previousState: AppState): AppState {
+  void previousState;
+
+  expect(result.ok).toBe(true);
+  if (!result.ok) {
+    throw new Error(`Expected live transition to succeed.`);
+  }
+
+  return result.value;
+}
+
+function createLiveReadyAppState(storage: MemoryStorage): AppState {
+  let state = initializeAppState({ storage, now: NOW });
+  state = commitLiveState(prepareEventForLiveDraw(state, { storage, savedAt: NOW }), state);
+  return state;
+}
+
+function createDrawingAppState(storage: MemoryStorage): AppState {
+  const readyState = createLiveReadyAppState(storage);
+  const state = commitLiveState(startLiveCountdown(readyState, { storage, savedAt: NOW }), readyState);
+  return commitLiveState(startLiveDraw(state, { storage, savedAt: NOW }), state);
+}
+
+function createPendingWinnerAppState(): AppState {
+  const storage = new MemoryStorage();
+  let state = createDrawingAppState(storage);
+  state = commitLiveState(
+    selectLiveWinner(state, {
+      storage,
+      savedAt: NOW,
+      attemptId: "attempt-0",
+      createdAt: NOW,
+      dependencies: firstEligibleDependencies(),
+    }),
+    state,
+  );
+  return commitLiveState(finishLiveReveal(state, { storage, savedAt: NOW }), state);
+}
+
+function createPrizeCompleteAppState(): AppState {
+  const storage = new MemoryStorage();
+  const pendingState = createPendingWinnerAppState();
+  return commitLiveState(confirmLiveWinner(pendingState, { storage, savedAt: NOW, resolvedAt: SAVED_AT }), pendingState);
+}
+
+function firstEligibleDependencies(excludedCode?: string): EventMachineDependencies {
+  return {
+    selectWinner: (participants) => {
+      const firstEligible = participants.find(
+        (participant) => participant.status === "eligible" && participant.code !== excludedCode,
+      );
+      if (!firstEligible) {
+        return {
+          ok: false,
+          error: {
+            code: "NO_ELIGIBLE_PARTICIPANTS",
+            message: "No eligible participants are available for drawing.",
+          },
+        };
+      }
+
+      return { ok: true, value: firstEligible };
+    },
   };
 }

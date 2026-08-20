@@ -1,6 +1,6 @@
 import { applyParticipantsToEventState, type ParticipantValidationResult } from "../domain/participantValidation";
-import { transitionEventState } from "../domain/eventMachine";
-import type { AppResult } from "../domain/types";
+import { transitionEventState, type EventMachineDependencies } from "../domain/eventMachine";
+import type { AppResult, EventState } from "../domain/types";
 import { clearEventState, inspectSavedSession, loadEventState, saveEventState, type StorageLike } from "../services/persistence";
 import type { AppState, NoSessionRecoveryState } from "./actions";
 import { appReducer } from "./appReducer";
@@ -29,6 +29,21 @@ export interface StartNewSessionOptions {
 export interface PrepareEventOptions {
   storage?: StorageLike;
   savedAt: string;
+}
+
+export interface LiveTransitionOptions {
+  storage?: StorageLike;
+  savedAt: string;
+}
+
+export interface SelectWinnerOptions extends LiveTransitionOptions {
+  attemptId: string;
+  createdAt: string;
+  dependencies?: EventMachineDependencies;
+}
+
+export interface ResolveWinnerOptions extends LiveTransitionOptions {
+  resolvedAt: string;
 }
 
 export function initializeAppState(options: InitializeAppOptions): AppState {
@@ -169,6 +184,52 @@ export function prepareEventForLiveDraw(state: AppState, options: PrepareEventOp
   };
 }
 
+export function startLiveCountdown(state: AppState, options: LiveTransitionOptions): AppResult<AppState> {
+  return transitionPersistAndCommit(state, transitionEventState(state.event, { type: "START_COUNTDOWN" }), options);
+}
+
+export function startLiveDraw(state: AppState, options: LiveTransitionOptions): AppResult<AppState> {
+  return transitionPersistAndCommit(state, transitionEventState(state.event, { type: "START_DRAW" }), options);
+}
+
+export function selectLiveWinner(state: AppState, options: SelectWinnerOptions): AppResult<AppState> {
+  const transitionResult = transitionEventState(
+    state.event,
+    {
+      type: "SELECT_WINNER",
+      attemptId: options.attemptId,
+      createdAt: options.createdAt,
+    },
+    options.dependencies,
+  );
+
+  return transitionPersistAndCommit(state, transitionResult, options);
+}
+
+export function finishLiveReveal(state: AppState, options: LiveTransitionOptions): AppResult<AppState> {
+  return transitionPersistAndCommit(state, transitionEventState(state.event, { type: "FINISH_REEL_STOPPING" }), options);
+}
+
+export function confirmLiveWinner(state: AppState, options: ResolveWinnerOptions): AppResult<AppState> {
+  return transitionPersistAndCommit(
+    state,
+    transitionEventState(state.event, { type: "CONFIRM_WINNER", resolvedAt: options.resolvedAt }),
+    options,
+  );
+}
+
+export function markLiveWinnerAbsent(state: AppState, options: ResolveWinnerOptions): AppResult<AppState> {
+  return transitionPersistAndCommit(
+    state,
+    transitionEventState(state.event, { type: "MARK_WINNER_ABSENT", resolvedAt: options.resolvedAt }),
+    options,
+  );
+}
+
+export function advanceLivePrize(state: AppState, options: LiveTransitionOptions): AppResult<AppState> {
+  return transitionPersistAndCommit(state, transitionEventState(state.event, { type: "ADVANCE_PRIZE" }), options);
+}
+
 export function resumeSavedSession(state: AppState, options: ResumeSavedSessionOptions = {}): AppResult<AppState> {
   if (state.recovery.status !== "recoverable") {
     return invalidCommand("A recoverable saved session is required before resume.", {
@@ -217,6 +278,44 @@ export function startNewSession(state: AppState, options: StartNewSessionOptions
   });
 
   return { ok: true, value: nextState };
+}
+
+function transitionPersistAndCommit(
+  state: AppState,
+  transitionResult: AppResult<EventState>,
+  options: LiveTransitionOptions,
+): AppResult<AppState> {
+  if (state.recovery.status !== "noSession" && state.recovery.status !== "resumed") {
+    return invalidCommand("Resolve startup recovery before running live event commands.", {
+      recoveryStatus: state.recovery.status,
+    });
+  }
+
+  if (!transitionResult.ok) {
+    return {
+      ok: false,
+      error: transitionResult.error,
+    };
+  }
+
+  const persistResult = saveEventState(transitionResult.value, {
+    savedAt: options.savedAt,
+    ...toStorageOptions(options.storage),
+  });
+  if (!persistResult.ok) {
+    return {
+      ok: false,
+      error: persistResult.error,
+    };
+  }
+
+  return {
+    ok: true,
+    value: appReducer(state, {
+      type: "COMMIT_EVENT_STATE",
+      event: transitionResult.value,
+    }),
+  };
 }
 
 function invalidCommand(message: string, details?: Record<string, unknown>): AppResult<never> {

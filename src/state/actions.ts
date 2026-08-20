@@ -65,6 +65,10 @@ export type AppAction =
       event: EventState;
     }
   | {
+      type: "COMMIT_EVENT_STATE";
+      event: EventState;
+    }
+  | {
       type: "RESUME_SAVED_SESSION";
       event: EventState;
     }

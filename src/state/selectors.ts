@@ -1,7 +1,30 @@
 import { getAbsentParticipants, getConfirmedParticipants, getEligibleParticipants, getPendingParticipant } from "../domain/eligibility";
 import { validateEventStateInvariants } from "../domain/invariants";
+import type { DrawAttempt, EventPhase, Participant, Prize } from "../domain/types";
 import type { AppState } from "./actions";
 import { isSetupEventReadyForParticipantApply } from "./initialState";
+
+export type PrimaryOperatorAction =
+  | "startCountdown"
+  | "startDraw"
+  | "selectWinner"
+  | "finishReveal"
+  | "confirmOrAbsent"
+  | "advancePrize"
+  | "eventComplete"
+  | "none";
+
+export interface PrizeProgress {
+  current: number;
+  total: number;
+  label: string;
+}
+
+export interface EventHistoryItem {
+  attempt: DrawAttempt;
+  prize: Prize | undefined;
+  participant: Participant | undefined;
+}
 
 export function selectCurrentPrize(state: AppState) {
   return state.event.prizes.find((prize) => prize.index === state.event.currentPrizeIndex);
@@ -21,6 +44,56 @@ export function selectAbsentParticipantCount(state: AppState): number {
 
 export function selectPendingParticipant(state: AppState) {
   return getPendingParticipant(state.event);
+}
+
+export function selectCurrentAttempt(state: AppState): DrawAttempt | undefined {
+  return state.event.attempts.find((attempt) => attempt.id === state.event.currentAttemptId);
+}
+
+export function selectCurrentPendingWinner(state: AppState): Participant | undefined {
+  const currentAttempt = selectCurrentAttempt(state);
+  if (!currentAttempt || currentAttempt.status !== "pending") {
+    return undefined;
+  }
+
+  return state.event.participants.find((participant) => participant.id === currentAttempt.participantId);
+}
+
+export function selectConfirmedWinners(state: AppState): EventHistoryItem[] {
+  return selectEventHistory(state).filter((item) => item.attempt.status === "confirmed");
+}
+
+export function selectPrizeProgress(state: AppState): PrizeProgress {
+  return {
+    current: state.event.currentPrizeIndex + 1,
+    total: state.event.prizes.length,
+    label: `${state.event.currentPrizeIndex + 1}/${state.event.prizes.length}`,
+  };
+}
+
+export function selectEventHistory(state: AppState): EventHistoryItem[] {
+  return state.event.attempts
+    .filter((attempt) => attempt.status === "confirmed" || attempt.status === "absent")
+    .map((attempt) => ({
+      attempt,
+      prize: state.event.prizes.find((prize) => prize.id === attempt.prizeId),
+      participant: state.event.participants.find((participant) => participant.id === attempt.participantId),
+    }));
+}
+
+export function selectPrimaryOperatorAction(state: AppState): PrimaryOperatorAction {
+  const actionByPhase: Record<EventPhase, PrimaryOperatorAction> = {
+    setup: "none",
+    ready: "startCountdown",
+    countdown: "startDraw",
+    drawing: "selectWinner",
+    reelStopping: "finishReveal",
+    pendingWinner: "confirmOrAbsent",
+    prizeComplete: "advancePrize",
+    eventComplete: "eventComplete",
+  };
+
+  return actionByPhase[state.event.phase];
 }
 
 export function selectCanApplyParticipants(state: AppState): boolean {

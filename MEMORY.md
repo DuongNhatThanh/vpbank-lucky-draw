@@ -5,9 +5,9 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 -->
 
 ## Active Phase & Goal
-**Current Task:** Phase 6B Operator Setup UI implemented; awaiting human review.
+**Current Task:** Phase 7 Live Operator Flow implemented; awaiting human review.
 **Next Steps:**
-1. Review the operator setup UI, recovery UI, participant import preview, and readiness flow.
+1. Review the live operator flow for start countdown, start draw, persisted winner selection, reveal completion, confirm, absent/redraw, prize advancement, and event completion.
 2. After approval, continue to the next scoped phase without adding presentation mode, reels, audio, fullscreen, or XLSX until explicitly requested.
 
 ## Architectural Decisions
@@ -32,16 +32,19 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - 2026-08-20 - Participant apply now persists the candidate event state before the app commits it, and startup/recovery never auto-resumes without an explicit action.
 - 2026-08-20 - Phase 6A hardening clarified that `configurationLocked` prevents setup edits only; it does not block starting Prize 2..6 when the event is in a valid `ready` state.
 - 2026-08-20 - Phase 6B added an operator setup UI shell that drives startup recovery, default roster load, paste/CSV participant preview, explicit apply, six-prize review, and prepare-for-live-draw wiring without implementing presentation mode.
+- 2026-08-20 - Phase 7 added the live operator application flow: setup routes into a live operator screen after preparation, recovery resumes directly into the saved live phase, and every live transition persists the candidate `EventState` before committing it to React state.
 
 ## Known Issues & Quirks
 *(Log current bugs or weird workarounds here)*
-- React scaffold, pure domain foundation, event state machine, persistence/recovery, participant import/validation, Phase 6A application state wiring, and Phase 6B operator setup UI exist; presentation mode, reels, audio, fullscreen, and XLSX parser support are not implemented yet.
+- React scaffold, pure domain foundation, event state machine, persistence/recovery, participant import/validation, Phase 6A application state wiring, Phase 6B operator setup UI, and Phase 7 live operator flow exist; presentation mode, reels, audio, fullscreen, and XLSX parser support are not implemented yet.
 - In this Codex sandbox, Vitest/Vite config loading can fail with an esbuild parent-directory `Access is denied` error; rerunning `npm run test` or `npm run build` with approved unsandboxed execution passed.
 - Phase 2 Domain Foundation is approved.
 - Phase 3 Event State Machine is approved.
 - Phase 4 Persistence & Recovery is approved.
 - Phase 5 Participant Import & Validation is approved.
 - Phase 6A Application State & Recovery Wiring is approved.
+- Phase 6B Operator Setup UI is approved.
+- Phase 7 Live Operator Flow is awaiting human review.
 - Exact XLSX package/version is still TBD; default candidate is a stable pinned browser-compatible SheetJS `xlsx` package.
 - Exact Vercel URL/domain, sound default state, reel/countdown timing, and default participant filename details will be finalized during implementation/rehearsal.
 
