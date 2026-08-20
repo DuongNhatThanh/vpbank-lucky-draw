@@ -61,6 +61,10 @@ export type AppAction =
       event: EventState;
     }
   | {
+      type: "PREPARE_LIVE_DRAW";
+      event: EventState;
+    }
+  | {
       type: "RESUME_SAVED_SESSION";
       event: EventState;
     }

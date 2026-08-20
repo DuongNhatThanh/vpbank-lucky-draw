@@ -45,6 +45,26 @@ export function selectCanApplyParticipants(state: AppState): boolean {
   );
 }
 
+export function selectCanPrepareLiveDraw(state: AppState): boolean {
+  if (state.recovery.status !== "noSession" && state.recovery.status !== "resumed") {
+    return false;
+  }
+
+  if (state.event.phase !== "setup" || state.event.configurationLocked || state.event.currentAttemptId !== undefined) {
+    return false;
+  }
+
+  if (state.participantPreview !== null) {
+    return false;
+  }
+
+  if (!validateEventStateInvariants(state.event).valid) {
+    return false;
+  }
+
+  return selectEligibleParticipantCount(state) > 0;
+}
+
 export function selectCanStartLiveDraw(state: AppState): boolean {
   if (state.recovery.status !== "noSession" && state.recovery.status !== "resumed") {
     return false;

@@ -8,6 +8,7 @@ import {
   clearApplicationError,
   clearParticipantPreview,
   initializeAppState,
+  prepareEventForLiveDraw,
   resumeSavedSession,
   setParticipantPreview,
   startNewSession,
@@ -16,6 +17,7 @@ import { createInitialAppState, createInitialEventState } from "../../src/state/
 import {
   selectAbsentParticipantCount,
   selectCanApplyParticipants,
+  selectCanPrepareLiveDraw,
   selectCanStartLiveDraw,
   selectConfirmedWinnerCount,
   selectCurrentPrize,
@@ -355,6 +357,22 @@ describe("state", () => {
         hasCurrentAttempt: true,
       },
     })).toBe(true);
+  });
+
+  it("allows setup to prepare the live draw when the roster is valid and ready", () => {
+    const storage = new MemoryStorage();
+    const state = initializeAppState({ storage, now: NOW });
+
+    expect(selectCanPrepareLiveDraw(state)).toBe(true);
+
+    const result = prepareEventForLiveDraw(state, { storage, savedAt: SAVED_AT });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.event.phase).toBe("ready");
+      expect(selectCanStartLiveDraw(result.value)).toBe(true);
+      expect(storage.peek(PERSISTENCE_KEY)).not.toBeNull();
+    }
   });
 
   it("keeps the current app state unchanged when preview is cleared or errors are cleared", () => {

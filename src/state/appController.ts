@@ -1,10 +1,11 @@
 import { applyParticipantsToEventState, type ParticipantValidationResult } from "../domain/participantValidation";
+import { transitionEventState } from "../domain/eventMachine";
 import type { AppResult } from "../domain/types";
 import { clearEventState, inspectSavedSession, loadEventState, saveEventState, type StorageLike } from "../services/persistence";
 import type { AppState, NoSessionRecoveryState } from "./actions";
 import { appReducer } from "./appReducer";
 import { createInitialAppState, createInitialEventState } from "./initialState";
-import { selectCanApplyParticipants } from "./selectors";
+import { selectCanApplyParticipants, selectCanPrepareLiveDraw } from "./selectors";
 
 export interface InitializeAppOptions {
   storage?: StorageLike;
@@ -23,6 +24,11 @@ export interface ResumeSavedSessionOptions {
 export interface StartNewSessionOptions {
   storage?: StorageLike;
   now: string;
+}
+
+export interface PrepareEventOptions {
+  storage?: StorageLike;
+  savedAt: string;
 }
 
 export function initializeAppState(options: InitializeAppOptions): AppState {
@@ -122,6 +128,43 @@ export function applyParticipantsToAppState(
     value: appReducer(state, {
       type: "APPLY_PARTICIPANTS",
       event: candidateResult.value,
+    }),
+  };
+}
+
+export function prepareEventForLiveDraw(state: AppState, options: PrepareEventOptions): AppResult<AppState> {
+  if (!selectCanPrepareLiveDraw(state)) {
+    return invalidCommand("The event is not ready to enter the live draw flow.", {
+      recoveryStatus: state.recovery.status,
+      phase: state.event.phase,
+      previewPresent: state.participantPreview !== null,
+    });
+  }
+
+  const transitionResult = transitionEventState(state.event, { type: "PREPARE_EVENT" });
+  if (!transitionResult.ok) {
+    return {
+      ok: false,
+      error: transitionResult.error,
+    };
+  }
+
+  const persistResult = saveEventState(transitionResult.value, {
+    savedAt: options.savedAt,
+    ...toStorageOptions(options.storage),
+  });
+  if (!persistResult.ok) {
+    return {
+      ok: false,
+      error: persistResult.error,
+    };
+  }
+
+  return {
+    ok: true,
+    value: appReducer(state, {
+      type: "PREPARE_LIVE_DRAW",
+      event: transitionResult.value,
     }),
   };
 }

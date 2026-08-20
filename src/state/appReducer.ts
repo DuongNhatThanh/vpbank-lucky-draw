@@ -27,6 +27,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         participantPreview: null,
         error: null,
       };
+    case "PREPARE_LIVE_DRAW":
+      return {
+        ...state,
+        event: action.event,
+        error: null,
+      };
     case "RESUME_SAVED_SESSION":
       return {
         ...state,
