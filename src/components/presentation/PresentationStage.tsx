@@ -14,6 +14,7 @@ import { playPresentationSound } from "../../presentation/audio";
 import { useFullscreen } from "../../presentation/fullscreen";
 import { StatusMessage } from "../shared/StatusMessage";
 import { CelebrationEffect } from "./CelebrationEffect";
+import { PresentationControls } from "./PresentationControls";
 import { PresentationHeader } from "./PresentationHeader";
 import { PrizeProgress } from "./PrizeProgress";
 import { ReelDisplay } from "./ReelDisplay";
@@ -23,9 +24,27 @@ export interface PresentationStageProps {
   state: AppState;
   onReturnToOperator: () => void;
   onRevealComplete: () => void;
+  onStartCountdown?: () => void;
+  onStartDraw?: () => void;
+  onSelectWinner?: () => void;
+  onConfirmWinner?: () => void;
+  onMarkAbsent?: () => void;
+  onAdvancePrize?: () => void;
+  isCommandInFlight?: boolean;
 }
 
-export function PresentationStage({ state, onReturnToOperator, onRevealComplete }: PresentationStageProps) {
+export function PresentationStage({
+  state,
+  onReturnToOperator,
+  onRevealComplete,
+  onStartCountdown = () => undefined,
+  onStartDraw = () => undefined,
+  onSelectWinner = () => undefined,
+  onConfirmWinner = () => undefined,
+  onMarkAbsent = () => undefined,
+  onAdvancePrize = () => undefined,
+  isCommandInFlight = false,
+}: PresentationStageProps) {
   const stageRef = useRef<HTMLElement | null>(null);
   const currentPrize = selectCurrentPrize(state);
   const progress = selectPrizeProgress(state);
@@ -190,9 +209,24 @@ export function PresentationStage({ state, onReturnToOperator, onRevealComplete 
           <div className="presentation-canvas__visual">
             {renderVisualState(phase, reelSettledDigits, countdownStep, isGrandPrize, pendingWinner, confirmedWinner, confirmedWinners)}
           </div>
-          <div className="presentation-canvas__status">{renderPhaseStatus(phase, pendingWinner, confirmedWinners.length)}</div>
+          <div className="presentation-canvas__status">{renderPhaseStatus(phase, currentPrize?.name, pendingWinner, confirmedWinners.length)}</div>
         </section>
       </div>
+      {phase !== "setup" && phase !== "eventComplete" ? (
+        <div className="presentation-stage__controls">
+          <PresentationControls
+            phase={phase}
+            pendingWinner={pendingWinner}
+            isCommandInFlight={isCommandInFlight}
+            onStartCountdown={onStartCountdown}
+            onStartDraw={onStartDraw}
+            onSelectWinner={onSelectWinner}
+            onConfirmWinner={onConfirmWinner}
+            onMarkAbsent={onMarkAbsent}
+            onAdvancePrize={onAdvancePrize}
+          />
+        </div>
+      ) : null}
       <CelebrationEffect active={celebrationActive} enhanced={isGrandPrize || phase === "eventComplete"} reducedMotion={prefersReducedMotion} />
     </section>
   );
@@ -269,67 +303,68 @@ function renderVisualState(
 
 function renderPhaseStatus(
   phase: EventPhase,
+  currentPrizeName: string | undefined,
   pendingWinner: Participant | undefined,
   confirmedWinnerCount: number,
 ) {
   if (phase === "setup") {
     return (
       <StatusMessage tone="info" title="Presentation is not active yet">
-        <p>Complete operator setup before entering the audience presentation.</p>
+        <p>Complete setup before the live presentation starts.</p>
       </StatusMessage>
     );
   }
 
   if (phase === "ready") {
     return (
-      <StatusMessage tone="info" title="Ready for the next prize">
-        <p>The draw is armed and waiting for the operator to begin.</p>
+      <StatusMessage tone="info" title={`Ready for ${currentPrizeName ?? "the next prize"}`}>
+        <p>Tap Start Draw when the MC is ready.</p>
       </StatusMessage>
     );
   }
 
   if (phase === "countdown") {
     return (
-      <StatusMessage tone="info" title="Countdown in progress">
-        <p>The audience view is ready. Continue when the countdown reaches its final beat.</p>
+      <StatusMessage tone="info" title="Get Ready">
+        <p>Three, two, one.</p>
       </StatusMessage>
     );
   }
 
   if (phase === "drawing") {
     return (
-      <StatusMessage tone="info" title="Selecting the official winner">
-        <p>The reels are visual only. The official result is chosen by the draw engine, not by the presentation UI.</p>
+      <StatusMessage tone="info" title="Drawing...">
+        <p>The winning code will appear once it is safely saved.</p>
       </StatusMessage>
     );
   }
 
   if (phase === "reelStopping") {
     return (
-      <StatusMessage tone="success" title="Winner selected and persisted">
-        <p>The winning code is already locked in. The presentation is only revealing that saved result.</p>
+      <StatusMessage tone="success" title="Winning Number">
+        <p>The selected code is revealing now.</p>
       </StatusMessage>
     );
   }
 
   if (phase === "pendingWinner") {
     return (
-      <StatusMessage tone="warning" title="Awaiting winner confirmation">
-        <p>{pendingWinner ? `Winning code ${pendingWinner.code} is pending confirmation from the operator.` : "A pending winner is awaiting confirmation."}</p>
+      <StatusMessage tone="warning" title="Winning Number">
+        <p>{pendingWinner ? `${pendingWinner.code} is waiting for confirmation.` : "A winner is waiting for confirmation."}</p>
       </StatusMessage>
     );
   }
 
   if (phase === "prizeComplete") {
     return (
-      <StatusMessage tone="success" title="Prize winner confirmed">
-        <p>The current prize is complete. The operator can advance when the MC is ready.</p>
+      <StatusMessage tone="success" title="Winner Confirmed">
+        <p>Move to the next prize when the MC is ready.</p>
       </StatusMessage>
     );
   }
 
   return (
-    <StatusMessage tone="success" title="Event complete">
+    <StatusMessage tone="success" title="Event Complete">
       <p>All six prizes have confirmed winners. Total confirmed winners: {confirmedWinnerCount}.</p>
     </StatusMessage>
   );

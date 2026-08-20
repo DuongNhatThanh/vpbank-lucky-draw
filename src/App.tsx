@@ -318,6 +318,13 @@ export default function App({ storage, now, createAttemptId, selectWinnerDepende
             state={state}
             onReturnToOperator={() => setViewMode("operator")}
             onRevealComplete={handleFinishReveal}
+            onStartCountdown={handleStartCountdown}
+            onStartDraw={handleStartDraw}
+            onSelectWinner={handleSelectWinner}
+            onConfirmWinner={handleConfirmWinner}
+            onMarkAbsent={handleMarkAbsent}
+            onAdvancePrize={handleAdvancePrize}
+            isCommandInFlight={liveActionInFlight !== null}
           />
         ) : (
           <>

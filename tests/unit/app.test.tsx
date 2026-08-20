@@ -185,42 +185,50 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: /^Event complete$/i })).toBeVisible();
   });
 
-  it("moves from setup into the live operator flow and advances the prize loop", () => {
+  it("operates the first prize entirely from Presentation Mode", () => {
+    vi.useFakeTimers();
     const storage = new MemoryStorage();
-    render(
-      <App
-        now={NOW}
-        storage={storage}
-        createAttemptId={() => "attempt-0"}
-        selectWinnerDependencies={firstEligibleDependencies()}
-      />,
-    );
+    try {
+      render(
+        <App
+          now={NOW}
+          storage={storage}
+          createAttemptId={() => "attempt-0"}
+          selectWinnerDependencies={firstEligibleDependencies()}
+        />,
+      );
 
-    fireEvent.click(screen.getByRole("button", { name: /load default roster/i }));
-    fireEvent.click(screen.getByRole("button", { name: /apply participants/i }));
-    fireEvent.click(screen.getByRole("button", { name: /continue to live draw/i }));
+      fireEvent.click(screen.getByRole("button", { name: /load default roster/i }));
+      fireEvent.click(screen.getByRole("button", { name: /apply participants/i }));
+      fireEvent.click(screen.getByRole("button", { name: /continue to live draw/i }));
+      fireEvent.click(screen.getByRole("button", { name: /open presentation/i }));
 
-    expect(screen.getByRole("button", { name: /start draw/i })).toBeVisible();
+      expect(screen.getByRole("button", { name: /start draw/i })).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: /start draw/i }));
-    expect(screen.getByRole("button", { name: /complete countdown/i })).toBeVisible();
+      fireEvent.click(screen.getByRole("button", { name: /start draw/i }));
+      expect(screen.getByRole("button", { name: /complete countdown/i })).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: /complete countdown/i }));
-    expect(screen.getByRole("button", { name: /select winner/i })).toBeVisible();
+      fireEvent.click(screen.getByRole("button", { name: /complete countdown/i }));
+      expect(screen.getByRole("button", { name: /select winner/i })).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: /select winner/i }));
-    expect(screen.getByRole("button", { name: /complete reveal/i })).toBeVisible();
+      fireEvent.click(screen.getByRole("button", { name: /select winner/i }));
+      act(() => {
+        vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[3] + 1);
+        vi.runAllTimers();
+      });
 
-    fireEvent.click(screen.getByRole("button", { name: /complete reveal/i }));
-    expect(screen.getByRole("button", { name: /confirm winner/i })).toBeVisible();
-    expect(screen.getByRole("button", { name: /mark absent/i })).toBeVisible();
+      expect(screen.getByLabelText(/winning code 0001/i)).toBeVisible();
+      expect(screen.getByRole("button", { name: /confirm winner/i })).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: /confirm winner/i }));
-    expect(screen.getByRole("button", { name: /next prize/i })).toBeVisible();
+      fireEvent.click(screen.getByRole("button", { name: /confirm winner/i }));
+      expect(screen.getByRole("button", { name: /next prize/i })).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: /next prize/i }));
-    expect(screen.getByRole("button", { name: /start draw/i })).toBeVisible();
-    expect(screen.getByRole("heading", { name: /^Prize 2$/i })).toBeVisible();
+      fireEvent.click(screen.getByRole("button", { name: /next prize/i }));
+      expect(screen.getByRole("heading", { name: /^Prize 2$/i })).toBeVisible();
+      expect(readPersistedEventState(storage).attempts[0]?.participantId).toBe("participant-0001");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("returns to the same prize after marking a winner absent", () => {
@@ -247,34 +255,113 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: /^Prize 1$/i })).toBeVisible();
   });
 
-  it("switches into presentation mode and back without changing the selected winner", () => {
+  it("keeps the selected winner identical across Presentation and Operator views", () => {
+    vi.useFakeTimers();
     const storage = new MemoryStorage();
-    render(
-      <App
-        now={NOW}
-        storage={storage}
-        createAttemptId={() => "attempt-0"}
-        selectWinnerDependencies={firstEligibleDependencies()}
-      />,
-    );
+    try {
+      render(
+        <App
+          now={NOW}
+          storage={storage}
+          createAttemptId={() => "attempt-0"}
+          selectWinnerDependencies={firstEligibleDependencies()}
+        />,
+      );
 
-    fireEvent.click(screen.getByRole("button", { name: /load default roster/i }));
-    fireEvent.click(screen.getByRole("button", { name: /apply participants/i }));
-    fireEvent.click(screen.getByRole("button", { name: /continue to live draw/i }));
-    fireEvent.click(screen.getByRole("button", { name: /start draw/i }));
-    fireEvent.click(screen.getByRole("button", { name: /complete countdown/i }));
-    fireEvent.click(screen.getByRole("button", { name: /select winner/i }));
+      fireEvent.click(screen.getByRole("button", { name: /load default roster/i }));
+      fireEvent.click(screen.getByRole("button", { name: /apply participants/i }));
+      fireEvent.click(screen.getByRole("button", { name: /continue to live draw/i }));
+      fireEvent.click(screen.getByRole("button", { name: /open presentation/i }));
+      fireEvent.click(screen.getByRole("button", { name: /start draw/i }));
+      fireEvent.click(screen.getByRole("button", { name: /complete countdown/i }));
+      fireEvent.click(screen.getByRole("button", { name: /select winner/i }));
 
-    fireEvent.click(screen.getByRole("button", { name: /open presentation/i }));
+      act(() => {
+        vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[3] + 1);
+        vi.runAllTimers();
+      });
 
-    expect(screen.getByRole("button", { name: /return to operator/i })).toBeVisible();
-    expect(screen.getByRole("button", { name: /sound on/i })).toBeVisible();
-    expect(screen.getByText(/winner selected and persisted/i)).toBeVisible();
+      const revealedCode = screen.getByLabelText(/winning code 0001/i).textContent ?? "";
+      expect(revealedCode).toBe("0001");
 
-    fireEvent.click(screen.getByRole("button", { name: /return to operator/i }));
+      fireEvent.click(screen.getByRole("button", { name: /return to operator/i }));
 
-    expect(screen.getByRole("button", { name: /complete reveal/i })).toBeVisible();
-    expect(readPersistedEventState(storage).attempts[0]?.participantId).toBe("participant-0001");
+      expect(screen.getByRole("button", { name: /confirm winner/i })).toBeVisible();
+      expect(screen.getByText(revealedCode)).toBeVisible();
+      expect(readPersistedEventState(storage).attempts[0]?.participantId).toBe("participant-0001");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("runs the absent and redraw branch entirely from Presentation Mode", () => {
+    vi.useFakeTimers();
+    const storage = new MemoryStorage();
+    const attemptIds = ["attempt-0", "attempt-1"];
+    try {
+      render(
+        <App
+          now={NOW}
+          storage={storage}
+          createAttemptId={() => attemptIds.shift() ?? "unexpected-attempt"}
+          selectWinnerDependencies={firstEligibleDependencies()}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /load default roster/i }));
+      fireEvent.click(screen.getByRole("button", { name: /apply participants/i }));
+      fireEvent.click(screen.getByRole("button", { name: /continue to live draw/i }));
+      fireEvent.click(screen.getByRole("button", { name: /open presentation/i }));
+
+      fireEvent.click(screen.getByRole("button", { name: /start draw/i }));
+      fireEvent.click(screen.getByRole("button", { name: /complete countdown/i }));
+      fireEvent.click(screen.getByRole("button", { name: /select winner/i }));
+
+      act(() => {
+        vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[3] + 1);
+        vi.runAllTimers();
+      });
+
+      expect(screen.getByRole("button", { name: /confirm winner/i })).toBeVisible();
+      expect(screen.getByRole("button", { name: /mark absent/i })).toBeVisible();
+
+      fireEvent.click(screen.getByRole("button", { name: /mark absent/i }));
+
+      expect(screen.getByRole("button", { name: /start draw/i })).toBeVisible();
+      expect(screen.getByRole("heading", { name: /^Prize 1$/i })).toBeVisible();
+
+      const afterAbsent = readPersistedEventState(storage);
+      const absentAttempt = afterAbsent.attempts.find((attempt) => attempt.status === "absent");
+      expect(absentAttempt).toBeDefined();
+      expect(afterAbsent.currentPrizeIndex).toBe(0);
+      expect(afterAbsent.phase).toBe("ready");
+      expect(afterAbsent.participants.find((participant) => participant.id === absentAttempt?.participantId)?.status).toBe("absent");
+
+      fireEvent.click(screen.getByRole("button", { name: /start draw/i }));
+      fireEvent.click(screen.getByRole("button", { name: /complete countdown/i }));
+      fireEvent.click(screen.getByRole("button", { name: /select winner/i }));
+
+      act(() => {
+        vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[3] + 1);
+        vi.runAllTimers();
+      });
+
+      expect(screen.getByRole("button", { name: /confirm winner/i })).toBeVisible();
+      fireEvent.click(screen.getByRole("button", { name: /confirm winner/i }));
+
+      expect(screen.getByRole("button", { name: /next prize/i })).toBeVisible();
+
+      const persisted = readPersistedEventState(storage);
+      const confirmedAttempt = persisted.attempts.find((attempt) => attempt.status === "confirmed");
+      expect(confirmedAttempt).toBeDefined();
+      expect(confirmedAttempt?.participantId).not.toBe(absentAttempt?.participantId);
+      expect(persisted.attempts.filter((attempt) => attempt.status === "absent")).toHaveLength(1);
+      expect(persisted.attempts.filter((attempt) => attempt.status === "confirmed")).toHaveLength(1);
+      expect(persisted.participants.find((participant) => participant.id === confirmedAttempt?.participantId)?.status).toBe("confirmed");
+      expect(screen.getByRole("heading", { name: /^Prize 1$/i })).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("resumes reelStopping, auto-completes presentation reveal, and preserves the same attempt", () => {
@@ -291,7 +378,7 @@ describe("App", () => {
       expect(readPersistedEventState(storage).attempts).toHaveLength(1);
 
       fireEvent.click(screen.getByRole("button", { name: /open presentation/i }));
-      expect(screen.getByText(/winner selected and persisted/i)).toBeVisible();
+      expect(screen.getByText(/revealing winner/i)).toBeVisible();
 
       act(() => {
         vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[3] + 1);

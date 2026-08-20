@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("operator live flow reveals the first winner in presentation and advances", async ({ page }) => {
+test("presentation live flow reveals the first winner and advances", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
 
@@ -15,6 +15,11 @@ test("operator live flow reveals the first winner in presentation and advances",
   await page.getByRole("button", { name: /continue to live draw/i }).click();
   await expect(page.getByText(/ready to begin the live draw/i)).toBeVisible();
 
+  await page.getByRole("button", { name: /open presentation/i }).click();
+  await expect(page.getByRole("button", { name: /return to operator/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /sound on/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /start draw/i })).toBeVisible();
+
   await page.getByRole("button", { name: /start draw/i }).click();
   await expect(page.getByRole("button", { name: /complete countdown/i })).toBeVisible();
 
@@ -22,23 +27,28 @@ test("operator live flow reveals the first winner in presentation and advances",
   await expect(page.getByRole("button", { name: /select winner/i })).toBeVisible();
 
   await page.getByRole("button", { name: /select winner/i }).click();
-  const operatorWinnerCode = await page.locator(".winner-summary__code").textContent();
-  expect(operatorWinnerCode).toMatch(/^\d{4}$/);
-
-  await page.getByRole("button", { name: /open presentation/i }).click();
-  await expect(page.getByRole("button", { name: /return to operator/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /sound on/i })).toBeVisible();
+  const presentationWinnerCode = await page.locator(".winner-reveal__code").textContent();
+  expect(presentationWinnerCode).toMatch(/^\d{4}$/);
   await expect(page.locator('[data-testid="presentation-digit"]')).toHaveCount(4);
-  await expect(page.locator('[data-testid="presentation-digit"]')).toHaveText(operatorWinnerCode!.split(""));
-  await expect(page.getByText(/awaiting winner confirmation/i)).toBeVisible();
-
-  await page.getByRole("button", { name: /return to operator/i }).click();
+  await expect(page.locator('[data-testid="presentation-digit"]')).toHaveText(presentationWinnerCode!.split(""));
+  await expect(page.getByText(/waiting for confirmation/i)).toBeVisible();
   await expect(page.getByRole("button", { name: /confirm winner/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /mark absent/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /complete reveal/i })).toHaveCount(0);
 
   await page.getByRole("button", { name: /confirm winner/i }).click();
-  await expect(page.locator(".metric").filter({ hasText: "Confirmed" }).locator(".metric__value")).toHaveText("1");
+  await expect(page.getByText(/winner confirmed/i)).toBeVisible();
   await expect(page.getByRole("button", { name: /next prize/i })).toBeVisible();
+  const confirmedAttemptCount = await page.evaluate(() => {
+    const raw = window.localStorage.getItem("vpbank-lucky-draw:event-state");
+    if (!raw) {
+      return 0;
+    }
+
+    const envelope = JSON.parse(raw) as { state?: { attempts?: Array<{ status?: string }> } };
+    return envelope.state?.attempts?.filter((attempt) => attempt.status === "confirmed").length ?? 0;
+  });
+  expect(confirmedAttemptCount).toBe(1);
 
   await page.getByRole("button", { name: /next prize/i }).click();
   await expect(page.getByRole("heading", { name: /^Prize 2$/i })).toBeVisible();

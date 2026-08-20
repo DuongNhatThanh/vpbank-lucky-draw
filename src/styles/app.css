@@ -656,6 +656,7 @@ input[type="file"] {
   position: relative;
   min-height: calc(100vh - 32px);
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 24px;
   padding: 24px;
   border-radius: 24px;
@@ -732,6 +733,36 @@ input[type="file"] {
   display: grid;
   gap: 24px;
   align-content: start;
+  min-height: 0;
+}
+
+.presentation-stage__controls {
+  display: flex;
+  justify-content: center;
+  align-items: end;
+}
+
+.presentation-controls {
+  width: min(920px, 100%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  background: rgba(7, 18, 12, 0.72);
+  box-shadow: 0 18px 32px rgba(4, 11, 7, 0.22);
+  backdrop-filter: blur(8px);
+}
+
+.presentation-controls__status {
+  margin: 0;
+  padding: 0 8px;
+  color: rgba(244, 251, 245, 0.84);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .presentation-prize {
@@ -1071,6 +1102,10 @@ input[type="file"] {
 
   .presentation-toolbar__button {
     flex: 1 1 auto;
+  }
+
+  .presentation-controls {
+    width: 100%;
   }
 
   .reel-display,

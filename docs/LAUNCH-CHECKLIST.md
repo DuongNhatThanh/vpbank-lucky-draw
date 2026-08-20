@@ -61,6 +61,7 @@
 - [ ] Apply the final roster.
 - [ ] Continue to Live Draw.
 - [ ] Open Presentation, enter Fullscreen, and verify Sound.
+- [ ] Keep the MC live workflow on Presentation Mode for the whole prize flow.
 - [ ] For each prize: Start Draw, Complete Countdown, Select Winner, wait for Presentation to finish the reveal automatically, then Confirm Winner or Mark Absent & Redraw.
 - [ ] Use Next Prize only after confirmation.
 

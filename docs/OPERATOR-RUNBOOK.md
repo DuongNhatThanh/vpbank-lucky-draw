@@ -8,10 +8,11 @@
 4. Preview the rows. Fix every invalid or duplicate row before applying.
 5. Click Apply Participants, review the six prizes, and click Continue to Live Draw.
 6. Open Presentation, enter Fullscreen if available, and verify Sound On.
+7. Keep Presentation Mode open for the live draw; Operator Mode is fallback/admin only.
 
 ## Each Prize
 
-1. Click Start Draw.
+1. In Presentation Mode, click Start Draw.
 2. Click Complete Countdown.
 3. Click Select Winner.
 4. Wait for Presentation to finish the reveal automatically.
@@ -37,11 +38,11 @@ Recovery is local to the same device and browser profile. It does not follow the
 
 ## Fallback Reveal Completion
 
-Use Complete Reveal only when Presentation is not being used or automatic reveal completion is unavailable.
+Use Complete Reveal only when Presentation is not being used or automatic reveal completion is unavailable. This is the fallback admin path, not the normal live flow.
 
 ## Presentation, Fullscreen, And Sound
 
-Presentation hides operator controls for the audience. Fullscreen is optional; browser Escape exits it. Sound is optional and must never block the draw. If audio, fullscreen, or celebration effects fail, continue the event in the available view.
+Presentation hides setup, history, and admin panels while keeping compact MC live controls available. Fullscreen is optional; browser Escape exits it. Sound is optional and must never block the draw. If audio, fullscreen, or celebration effects fail, continue the event in the available view.
 
 ## Emergency Rules
 

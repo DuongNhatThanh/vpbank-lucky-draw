@@ -32,7 +32,7 @@ describe("PresentationStage", () => {
       <PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={onRevealComplete} />,
     );
 
-    expect(screen.getByText(/winner selected and persisted/i)).toBeVisible();
+    expect(screen.getByRole("heading", { name: /winning number/i })).toBeVisible();
     expect(screen.queryAllByTestId("presentation-digit")).toHaveLength(0);
 
     act(() => {
@@ -42,6 +42,7 @@ describe("PresentationStage", () => {
 
     expect(screen.getAllByTestId("presentation-digit").map((digit) => digit.textContent).join("")).toBe("0027");
     expect(onRevealComplete).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: /complete reveal/i })).not.toBeInTheDocument();
 
     rerender(<PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={onRevealComplete} />);
     act(() => {
@@ -94,7 +95,7 @@ describe("PresentationStage", () => {
     expect(onRevealComplete).not.toHaveBeenCalled();
   });
 
-  it("does not expose an official winner in ready or drawing phases", () => {
+  it("shows phase-appropriate live controls without exposing an official winner early", () => {
     const onRevealComplete = vi.fn();
     const ready = withPhase(createBaseState(), "ready");
     const { rerender } = render(
@@ -103,6 +104,7 @@ describe("PresentationStage", () => {
 
     expect(screen.queryByLabelText(/Winning code 0000/i)).not.toBeInTheDocument();
     expect(screen.queryByText("0000")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /start draw/i })).toBeVisible();
 
     rerender(
       <PresentationStage
@@ -112,7 +114,7 @@ describe("PresentationStage", () => {
       />,
     );
 
-    expect(screen.getByText(/official result is chosen by the draw engine/i)).toBeVisible();
+    expect(screen.getByRole("button", { name: /select winner/i })).toBeVisible();
     expect(screen.queryByLabelText(/^Winning code \d{4}$/i)).not.toBeInTheDocument();
   });
 
@@ -123,6 +125,8 @@ describe("PresentationStage", () => {
 
     expect(screen.getAllByTestId("presentation-digit").map((digit) => digit.textContent).join("")).toBe("0027");
     expect(screen.getByText("Nguyễn Văn A")).toBeVisible();
+    expect(screen.getByRole("button", { name: /confirm winner/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /mark absent/i })).toBeVisible();
   });
 
   it("shows the confirmed winner for the current prize after confirmation", () => {
@@ -132,7 +136,7 @@ describe("PresentationStage", () => {
 
     expect(screen.getAllByTestId("presentation-digit").map((digit) => digit.textContent).join("")).toBe("0027");
     expect(screen.queryByText("0000")).not.toBeInTheDocument();
-    expect(screen.getByText(/prize winner confirmed/i)).toBeVisible();
+    expect(screen.getByRole("button", { name: /next prize/i })).toBeVisible();
   });
 
   it("uses Grand Prize treatment from isGrandPrize", () => {
@@ -213,7 +217,7 @@ describe("PresentationStage", () => {
     const factory = vi.fn(() => audio);
 
     await expect(playPresentationSound("revealComplete", true, factory)).resolves.toBe(true);
-    expect(factory).toHaveBeenCalledWith("/audio/reveal-complete.mp3");
+    expect(factory).toHaveBeenCalledWith("/audio/digit-stop.mp3");
     expect(play).toHaveBeenCalledTimes(1);
 
     const rejectedAudio = { play: vi.fn().mockRejectedValue(new Error("blocked")), volume: 1 } as unknown as HTMLAudioElement;

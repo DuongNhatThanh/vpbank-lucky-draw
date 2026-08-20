@@ -5,10 +5,10 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 -->
 
 ## Active Phase & Goal
-**Current Task:** Phase 8B Fullscreen + Audio + Confetti + Final Event Polish implemented; awaiting human review.
+**Current Task:** Phase 10A Single-Screen MC Live Experience implemented; awaiting human review.
 **Next Steps:**
-1. Review fullscreen, sound toggle, celebration effects, reduced-motion behavior, and final presentation polish against the approved PRD and Tech Design.
-2. After approval, continue to the next scoped phase without adding XLSX, reset/restart, or backend features.
+1. Review the Presentation Mode MC controls in rehearsal and confirm the full live flow can run without returning to Operator Mode.
+2. After Phase 10A approval, continue to Phase 10B/10C visual/audio choreography without changing draw correctness or persistence architecture.
 
 ## Architectural Decisions
 *(Log specific choices made during the build here so future agents respect them)*
@@ -39,7 +39,11 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - 2026-08-20 - Presentation `prizeComplete` renders the confirmed winner for the current prize, while ready/drawing use neutral reels and countdown uses a 3-2-1 visual.
 - 2026-08-20 - Phase 8A Presentation Mode + Reel System approved; Phase 8B adds UI-local fullscreen, non-blocking presentation audio, bounded celebration effects, and final event polish without changing EventState.
 - 2026-08-20 - Phase 9 rehearsal and launch-readiness documentation was added. The supplied local audio assets match the configured paths, and the remaining venue, fullscreen, audio, Vercel, offline, and browser-refresh checks require human rehearsal.
-- 2026-08-20 - Presentation audio uses named local placeholder paths under `/audio/`; missing assets or rejected playback never block the draw, and reduced motion replaces moving confetti with a static glow.
+- 2026-08-20 - Presentation audio uses shipped local asset paths under `/audio/`; missing assets or rejected playback never block the draw, and reduced motion replaces moving confetti with a static glow.
+- 2026-08-20 - Phase 9 automated readiness checks are approved.
+- 2026-08-20 - Phase 10A adds phase-aware MC controls directly to Presentation Mode by reusing the existing App live handlers and appController transitions; Presentation still never performs RNG or mutates draw state directly.
+- 2026-08-20 - Operator Mode remains the fallback/admin/recovery interface, while the normal MC live flow can run from Presentation Mode after opening it once.
+- 2026-08-20 - Phase 10B/10C visual/audio choreography is not implemented yet; reel timing, continuous spin audio, digit-stop audio choreography, gold winner animation, scale-up, and fireworks redesign remain deferred.
 
 ## Known Issues & Quirks
 *(Log current bugs or weird workarounds here)*
@@ -54,7 +58,8 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - Phase 7 Live Operator Flow is approved.
 - Phase 8A Presentation Mode + Reel System is approved.
 - Phase 8B Fullscreen + Audio + Confetti + Final Event Polish is approved.
-- Phase 9 Rehearsal & Launch Readiness is implemented and awaiting human rehearsal.
+- Phase 9 Rehearsal & Launch Readiness automated checks are approved; venue/human rehearsal is still required.
+- Phase 10A Single-Screen MC Live Experience is implemented and awaiting human review.
 - Presentation mode now uses the available VPBank logo asset from `public/vpbank-logo.webp`.
 - Exact XLSX package/version is still TBD; default candidate is a stable pinned browser-compatible SheetJS `xlsx` package.
 - Exact Vercel URL/domain, sound default state, reel/countdown timing, and default participant filename details will be finalized during implementation/rehearsal.
@@ -72,4 +77,5 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - [x] Live operator flow (approved)
 - [x] Presentation mode and reels (approved)
 - [x] Fullscreen, audio, confetti, and final event polish
-- [ ] Rehearsal and launch (readiness work implemented; human rehearsal required)
+- [x] Rehearsal and launch automated readiness
+- [ ] Single-screen MC live experience (implemented; awaiting human review)
