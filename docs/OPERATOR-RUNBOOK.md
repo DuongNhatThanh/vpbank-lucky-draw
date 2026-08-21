@@ -13,18 +13,16 @@
 ## Each Prize
 
 1. In Presentation Mode, click Start Draw.
-2. Click Complete Countdown.
-3. Click Select Winner.
-4. Wait for Presentation to finish the reveal automatically.
-5. Confirm Winner when the participant is present.
-6. If the participant is absent, click Mark Absent & Redraw. The same prize remains current and the absent code cannot be selected again.
-7. After confirmation, click Next Prize.
+2. Wait for the countdown, official winner selection, and reel reveal to run automatically.
+3. Confirm Winner when the participant is present.
+4. If the participant is absent, click Mark Absent & Redraw. The same prize remains current, the absent code cannot be selected again, and Presentation automatically starts the redraw countdown.
+5. After confirmation, click Next Prize.
 
 ## What The Phases Mean
 
 - Ready: the current prize can begin.
-- Countdown: the draw is being started.
-- Drawing: the operator can select the official winner.
+- Countdown: Presentation is counting down and will advance automatically.
+- Drawing: the application is selecting the official winner through the approved controller path.
 - Reel stopping: the selected winner is already saved and is being revealed.
 - Pending winner: the MC must confirm the winner or mark the participant absent.
 - Prize complete: the winner is confirmed and the next prize can be opened.
@@ -38,7 +36,7 @@ Recovery is local to the same device and browser profile. It does not follow the
 
 ## Fallback Reveal Completion
 
-Use Complete Reveal only when Presentation is not being used or automatic reveal completion is unavailable. This is the fallback admin path, not the normal live flow.
+Use Complete Countdown, Select Winner, or Complete Reveal only from Operator Mode fallback when Presentation automation is unavailable. These are fallback admin controls, not the normal live flow.
 
 ## Presentation, Fullscreen, And Sound
 

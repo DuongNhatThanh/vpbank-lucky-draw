@@ -9,7 +9,7 @@ import {
   selectCurrentPrize,
   selectPrizeProgress,
 } from "../../state/selectors";
-import { createPresentationAudioController, playPresentationSound } from "../../presentation/audio";
+import { createPresentationAudioController } from "../../presentation/audio";
 import { PRESENTATION_TIMING } from "../../presentation/timing";
 import { useFullscreen } from "../../presentation/fullscreen";
 import { StatusMessage } from "../shared/StatusMessage";
@@ -26,7 +26,6 @@ export interface PresentationStageProps {
   onRevealComplete: () => void;
   onStartCountdown?: () => void;
   onStartDraw?: () => void;
-  onSelectWinner?: () => void;
   onConfirmWinner?: () => void;
   onMarkAbsent?: () => void;
   onAdvancePrize?: () => void;
@@ -39,7 +38,6 @@ export function PresentationStage({
   onRevealComplete,
   onStartCountdown = () => undefined,
   onStartDraw = () => undefined,
-  onSelectWinner = () => undefined,
   onConfirmWinner = () => undefined,
   onMarkAbsent = () => undefined,
   onAdvancePrize = () => undefined,
@@ -63,7 +61,8 @@ export function PresentationStage({
   const revealAttemptRef = useRef<string | null>(null);
   const revealCompletedRef = useRef(false);
   const countdownAttemptRef = useRef<string | null>(null);
-  const countdownStepRef = useRef<number | null>(null);
+  const countdownSoundHandledRef = useRef(false);
+  const countdownAutoAdvanceScheduledRef = useRef(false);
   const revealHoldTimeoutRef = useRef<number | null>(null);
   const fullscreen = useFullscreen(stageRef);
 
@@ -77,6 +76,7 @@ export function PresentationStage({
 
   useEffect(() => {
     if (phase === "drawing" || phase === "reelStopping") {
+      audioController.stopOneShot("countdownTick");
       void audioController.startLoop(presentationSoundEnabled);
     } else {
       audioController.stopLoop();
@@ -84,14 +84,24 @@ export function PresentationStage({
   }, [audioController, phase, presentationSoundEnabled]);
 
   useEffect(() => {
-    if (phase === "countdown" && countdownStepRef.current !== countdownStep) {
-      countdownStepRef.current = countdownStep;
-      void playPresentationSound("countdownTick", presentationSoundEnabledRef.current);
-    } else if (phase !== "countdown") {
-      countdownAttemptRef.current = null;
-      countdownStepRef.current = null;
+    if (phase !== "countdown") {
+      audioController.stopOneShot("countdownTick");
+      countdownSoundHandledRef.current = false;
+      return;
     }
-  }, [countdownStep, phase]);
+
+    if (!countdownSoundHandledRef.current) {
+      countdownSoundHandledRef.current = true;
+      if (presentationSoundEnabledRef.current) {
+        void audioController.playOneShot("countdownTick", true);
+      }
+      return;
+    }
+
+    if (!presentationSoundEnabled) {
+      audioController.stopOneShot("countdownTick");
+    }
+  }, [audioController, phase, presentationSoundEnabled]);
 
   useEffect(() => {
     onRevealCompleteRef.current = onRevealComplete;
@@ -100,6 +110,7 @@ export function PresentationStage({
   useEffect(() => {
     return () => {
       audioController.stopLoop();
+      audioController.stopOneShot("countdownTick");
       if (revealHoldTimeoutRef.current !== null) {
         window.clearTimeout(revealHoldTimeoutRef.current);
       }
@@ -128,7 +139,7 @@ export function PresentationStage({
       audioController.stopLoop();
       if (!revealCompletedRef.current) {
         const finalSound = isGrandPrize ? "grandPrize" : "winnerReveal";
-        void playPresentationSound(finalSound, presentationSoundEnabledRef.current);
+        void audioController.playOneShot(finalSound, presentationSoundEnabledRef.current);
       }
       if (revealHoldTimeoutRef.current !== null) {
         window.clearTimeout(revealHoldTimeoutRef.current);
@@ -149,11 +160,11 @@ export function PresentationStage({
     const timers = PRESENTATION_TIMING.reelDigitStopsMs.map((delayMs, index) =>
       window.setTimeout(() => {
         setReelSettledDigits(index + 1);
-        void playPresentationSound("digitStop", presentationSoundEnabledRef.current);
+        void audioController.playOneShot("digitStop", presentationSoundEnabledRef.current);
 
         if (index === PRESENTATION_TIMING.reelDigitStopsMs.length - 1) {
           audioController.stopLoop();
-          void playPresentationSound(isGrandPrize ? "grandPrize" : "winnerReveal", presentationSoundEnabledRef.current);
+          void audioController.playOneShot(isGrandPrize ? "grandPrize" : "winnerReveal", presentationSoundEnabledRef.current);
           if (revealHoldTimeoutRef.current !== null) {
             window.clearTimeout(revealHoldTimeoutRef.current);
           }
@@ -177,13 +188,13 @@ export function PresentationStage({
   useEffect(() => {
     if (phase !== "countdown") {
       countdownAttemptRef.current = null;
+      countdownAutoAdvanceScheduledRef.current = false;
       setCountdownStep(3);
       return;
     }
 
     if (countdownAttemptRef.current !== state.event.currentAttemptId) {
       countdownAttemptRef.current = state.event.currentAttemptId ?? null;
-      countdownStepRef.current = null;
       setCountdownStep(3);
     }
 
@@ -206,6 +217,31 @@ export function PresentationStage({
       timers.forEach((timer) => window.clearTimeout(timer));
     };
   }, [phase, prefersReducedMotion, state.event.currentAttemptId]);
+
+  useEffect(() => {
+    if (phase !== "countdown") {
+      countdownAutoAdvanceScheduledRef.current = false;
+      return;
+    }
+
+    if (countdownAutoAdvanceScheduledRef.current) {
+      return;
+    }
+
+    countdownAutoAdvanceScheduledRef.current = true;
+    const timer = window.setTimeout(
+      () => {
+        countdownAutoAdvanceScheduledRef.current = false;
+        onStartDraw();
+      },
+      prefersReducedMotion ? PRESENTATION_TIMING.reducedMotionCountdownCompleteMs : PRESENTATION_TIMING.countdownCompleteMs,
+    );
+
+    return () => {
+      window.clearTimeout(timer);
+      countdownAutoAdvanceScheduledRef.current = false;
+    };
+  }, [onStartDraw, phase, prefersReducedMotion]);
 
   function triggerRevealComplete() {
     if (revealCompletedRef.current) {
@@ -248,8 +284,6 @@ export function PresentationStage({
             pendingWinner={pendingWinner}
             isCommandInFlight={isCommandInFlight}
             onStartCountdown={onStartCountdown}
-            onStartDraw={onStartDraw}
-            onSelectWinner={onSelectWinner}
             onConfirmWinner={onConfirmWinner}
             onMarkAbsent={onMarkAbsent}
             onAdvancePrize={onAdvancePrize}

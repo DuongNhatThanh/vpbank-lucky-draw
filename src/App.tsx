@@ -75,7 +75,14 @@ export default function App({ storage, now, createAttemptId, selectWinnerDepende
   const attemptCounterRef = useRef(0);
   const liveActionInFlightRef = useRef<LiveCommandName | null>(null);
   const revealCompletionAttemptRef = useRef<string | null>(null);
+  const presentationAutoRedrawRef = useRef(false);
+  const presentationAutoSelectRef = useRef(false);
+  const startCountdownCommandRef = useRef<() => void>(() => undefined);
+  const selectWinnerCommandRef = useRef<() => void>(() => undefined);
   const getTimestamp = () => now ?? new Date().toISOString();
+
+  startCountdownCommandRef.current = () => handleStartCountdown();
+  selectWinnerCommandRef.current = () => handleSelectWinner();
 
   useEffect(() => {
     if (state.error && state.recovery.status !== "invalid") {
@@ -97,6 +104,38 @@ export default function App({ storage, now, createAttemptId, selectWinnerDepende
       revealCompletionAttemptRef.current = null;
     }
   }, [state.event.currentAttemptId, state.event.phase]);
+
+  useEffect(() => {
+    if (state.event.phase !== "drawing") {
+      presentationAutoSelectRef.current = false;
+      return;
+    }
+
+    if (
+      viewMode !== "presentation" ||
+      presentationAutoSelectRef.current ||
+      liveActionInFlightRef.current
+    ) {
+      return;
+    }
+
+    presentationAutoSelectRef.current = true;
+    selectWinnerCommandRef.current();
+  }, [state.event.phase, viewMode]);
+
+  useEffect(() => {
+    if (
+      viewMode !== "presentation" ||
+      state.event.phase !== "ready" ||
+      !presentationAutoRedrawRef.current ||
+      liveActionInFlightRef.current
+    ) {
+      return;
+    }
+
+    presentationAutoRedrawRef.current = false;
+    startCountdownCommandRef.current();
+  }, [state.event.phase, viewMode]);
 
   const currentPrize = selectCurrentPrize(state);
   const currentAttempt = selectCurrentAttempt(state);
@@ -155,7 +194,7 @@ export default function App({ storage, now, createAttemptId, selectWinnerDepende
 
   function runLiveCommand(command: LiveCommandName, operation: () => AppResult<AppState>) {
     if (liveActionInFlightRef.current) {
-      return;
+      return undefined;
     }
 
     liveActionInFlightRef.current = command;
@@ -165,6 +204,7 @@ export default function App({ storage, now, createAttemptId, selectWinnerDepende
       const result = operation();
       onBeforeLiveCommandCommit?.(command);
       commit(result);
+      return result;
     } catch (error) {
       liveActionInFlightRef.current = null;
       setLiveActionInFlight(null);
@@ -282,6 +322,15 @@ export default function App({ storage, now, createAttemptId, selectWinnerDepende
     });
   }
 
+  function handlePresentationMarkAbsent() {
+    const result = runLiveCommand("markAbsent", () => {
+      const timestamp = getTimestamp();
+      return markLiveWinnerAbsent(state, { resolvedAt: timestamp, savedAt: timestamp, ...withStorage(storage) });
+    });
+
+    presentationAutoRedrawRef.current = result?.ok === true;
+  }
+
   function handleAdvancePrize() {
     runLiveCommand("advancePrize", () => advanceLivePrize(state, { savedAt: getTimestamp(), ...withStorage(storage) }));
   }
@@ -320,9 +369,8 @@ export default function App({ storage, now, createAttemptId, selectWinnerDepende
             onRevealComplete={handleFinishReveal}
             onStartCountdown={handleStartCountdown}
             onStartDraw={handleStartDraw}
-            onSelectWinner={handleSelectWinner}
             onConfirmWinner={handleConfirmWinner}
-            onMarkAbsent={handleMarkAbsent}
+            onMarkAbsent={handlePresentationMarkAbsent}
             onAdvancePrize={handleAdvancePrize}
             isCommandInFlight={liveActionInFlight !== null}
           />

@@ -34,7 +34,7 @@
 ## 6. Audio Check
 
 - [ ] Turn Sound On after a user interaction.
-- [ ] Hear countdown tick, draw start, reveal complete, winner confirmed, and Grand Prize sounds.
+- [ ] Hear countdown tick, continuous reel spin, digit stops, winner reveal, and Grand Prize sounds.
 - [ ] Check volume with the ballroom AV system.
 - [ ] Turn Sound Off and confirm the draw still works.
 
@@ -62,7 +62,7 @@
 - [ ] Continue to Live Draw.
 - [ ] Open Presentation, enter Fullscreen, and verify Sound.
 - [ ] Keep the MC live workflow on Presentation Mode for the whole prize flow.
-- [ ] For each prize: Start Draw, Complete Countdown, Select Winner, wait for Presentation to finish the reveal automatically, then Confirm Winner or Mark Absent & Redraw.
+- [ ] For each prize: Start Draw, wait for countdown, draw, and reveal to run automatically, then Confirm Winner or Mark Absent & Redraw.
 - [ ] Use Next Prize only after confirmation.
 
 ## 11. Emergency Procedures
@@ -71,6 +71,7 @@
 - [ ] Presentation closes: reopen Presentation from operator view.
 - [ ] Sound or fullscreen fails: continue without it.
 - [ ] Winner absent: Mark Absent & Redraw.
+- [ ] Complete Countdown and Select Winner: use only from Operator Mode fallback if Presentation automation is unavailable.
 - [ ] Complete Reveal: use only when Presentation is not being used or automatic reveal completion is unavailable.
 - [ ] Invalid saved data: do not delete it blindly; Start New only with organizer approval.
 

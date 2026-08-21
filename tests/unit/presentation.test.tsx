@@ -91,14 +91,23 @@ describe("PresentationStage", () => {
     expect(onRevealComplete).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a 3-2-1 countdown without completing a reveal", () => {
+  it("shows a 3-2-1 countdown and auto-advances once when it completes", () => {
     vi.useFakeTimers();
     const onRevealComplete = vi.fn();
+    const onStartDraw = vi.fn();
     const state = withPhase(createBaseState(), "countdown");
 
-    render(<PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={onRevealComplete} />);
+    render(
+      <PresentationStage
+        state={state}
+        onReturnToOperator={() => undefined}
+        onRevealComplete={onRevealComplete}
+        onStartDraw={onStartDraw}
+      />,
+    );
 
     expect(screen.getByTestId("presentation-countdown-value")).toHaveTextContent("3");
+    expect(screen.queryByRole("button", { name: /complete countdown/i })).not.toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(PRESENTATION_TIMING.countdownStepMs);
@@ -110,9 +119,117 @@ describe("PresentationStage", () => {
     });
     expect(screen.getByTestId("presentation-countdown-value")).toHaveTextContent("1");
     expect(onRevealComplete).not.toHaveBeenCalled();
+    expect(onStartDraw).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(PRESENTATION_TIMING.countdownCompleteMs - PRESENTATION_TIMING.countdownStepMs * 2 + 1);
+    });
+
+    expect(onStartDraw).toHaveBeenCalledTimes(1);
   });
 
-  it("shows phase-appropriate live controls without exposing an official winner early", () => {
+  it("plays the three-second countdown audio once and does not replay it on visual steps or rerender", () => {
+    vi.useFakeTimers();
+    const onStartDraw = vi.fn();
+    const state = withPhase(createBaseState(), "countdown");
+
+    const { rerender } = render(
+      <PresentationStage
+        state={state}
+        onReturnToOperator={() => undefined}
+        onRevealComplete={() => undefined}
+        onStartDraw={onStartDraw}
+      />,
+    );
+
+    const countdownAudio = () => audioInstances.filter((audio) => audio.src === "/audio/countdown-tick.mp3");
+    expect(countdownAudio()).toHaveLength(1);
+    expect(countdownAudio()[0]?.play).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      vi.advanceTimersByTime(PRESENTATION_TIMING.countdownStepMs);
+    });
+    expect(screen.getByTestId("presentation-countdown-value")).toHaveTextContent("2");
+    expect(countdownAudio()).toHaveLength(1);
+
+    act(() => {
+      vi.advanceTimersByTime(PRESENTATION_TIMING.countdownStepMs);
+    });
+    expect(screen.getByTestId("presentation-countdown-value")).toHaveTextContent("1");
+    expect(countdownAudio()).toHaveLength(1);
+
+    rerender(
+      <PresentationStage
+        state={state}
+        onReturnToOperator={() => undefined}
+        onRevealComplete={() => undefined}
+        onStartDraw={onStartDraw}
+      />,
+    );
+    expect(countdownAudio()).toHaveLength(1);
+
+    act(() => {
+      vi.advanceTimersByTime(PRESENTATION_TIMING.countdownCompleteMs - PRESENTATION_TIMING.countdownStepMs * 2 + 1);
+    });
+    expect(onStartDraw).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops countdown audio before reel spin starts when drawing begins", () => {
+    vi.useFakeTimers();
+    const countdownState = withPhase(createBaseState(), "countdown");
+    const drawingState = withPhase(createBaseState(), "drawing");
+
+    const { rerender } = render(
+      <PresentationStage
+        state={countdownState}
+        onReturnToOperator={() => undefined}
+        onRevealComplete={() => undefined}
+      />,
+    );
+
+    const countdownAudio = audioInstances.find((audio) => audio.src === "/audio/countdown-tick.mp3");
+    expect(countdownAudio).toBeDefined();
+
+    rerender(
+      <PresentationStage
+        state={drawingState}
+        onReturnToOperator={() => undefined}
+        onRevealComplete={() => undefined}
+        onSelectWinner={() => undefined}
+      />,
+    );
+
+    const reelAudio = audioInstances.find((audio) => audio.src === "/audio/reel-spin-loop.mp3");
+    expect(countdownAudio).toBeDefined();
+    expect(reelAudio).toBeDefined();
+    if (!countdownAudio || !reelAudio) {
+      throw new Error("Expected countdown and reel audio instances.");
+    }
+
+    expect(countdownAudio.pause).toHaveBeenCalledTimes(1);
+    expect(countdownAudio.currentTime).toBe(0);
+    expect(reelAudio.play).toHaveBeenCalledTimes(1);
+    expect(countdownAudio.pause.mock.invocationCallOrder[0]!).toBeLessThan(reelAudio.play.mock.invocationCallOrder[0]!);
+  });
+
+  it("stops countdown audio when sound is disabled and does not replay it when sound is re-enabled mid-countdown", () => {
+    vi.useFakeTimers();
+    const state = withPhase(createBaseState(), "countdown");
+
+    render(<PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />);
+
+    const countdownAudio = audioInstances.filter((audio) => audio.src === "/audio/countdown-tick.mp3");
+    expect(countdownAudio).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /sound on/i }));
+    expect(countdownAudio[0]?.pause).toHaveBeenCalledTimes(1);
+    expect(countdownAudio[0]?.currentTime).toBe(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /sound off/i }));
+    expect(audioInstances.filter((audio) => audio.src === "/audio/countdown-tick.mp3")).toHaveLength(1);
+  });
+
+  it("shows phase-appropriate live controls during drawing without exposing a winner early", () => {
     const onRevealComplete = vi.fn();
     const ready = withPhase(createBaseState(), "ready");
     const { rerender } = render(
@@ -131,7 +248,8 @@ describe("PresentationStage", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /select winner/i })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /select winner/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/selecting winner/i)).toBeVisible();
     expect(screen.queryByLabelText(/^Winning code \d{4}$/i)).not.toBeInTheDocument();
   });
 

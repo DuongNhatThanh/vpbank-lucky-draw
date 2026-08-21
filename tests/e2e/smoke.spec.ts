@@ -20,15 +20,20 @@ test("presentation live flow reveals the first winner and advances", async ({ pa
   await expect(page.getByRole("button", { name: /sound on/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /start draw/i })).toBeVisible();
 
+  // Phase 10B.1: one click drives countdown -> drawing -> selection -> reveal.
+  // Reduced motion intentionally compresses the transient countdown/drawing phases,
+  // so the E2E must not require "Countdown running..." to remain visible.
   await page.getByRole("button", { name: /start draw/i }).click();
-  await expect(page.getByRole("button", { name: /complete countdown/i })).toBeVisible();
 
-  await page.getByRole("button", { name: /complete countdown/i }).click();
-  await expect(page.getByRole("button", { name: /select winner/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /complete countdown/i })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /select winner/i })).toHaveCount(0);
 
-  await page.getByRole("button", { name: /select winner/i }).click();
-  const presentationWinnerCode = await page.locator(".winner-reveal__code").textContent();
+  const winnerReveal = page.locator(".winner-reveal__code");
+  await expect(winnerReveal).toBeVisible();
+
+  const presentationWinnerCode = await winnerReveal.textContent();
   expect(presentationWinnerCode).toMatch(/^\d{4}$/);
+
   await expect(page.locator('[data-testid="presentation-digit"]')).toHaveCount(4);
   await expect(page.locator('[data-testid="presentation-digit"]')).toHaveText(presentationWinnerCode!.split(""));
   await expect(page.getByText(/waiting for confirmation/i)).toBeVisible();
@@ -39,6 +44,7 @@ test("presentation live flow reveals the first winner and advances", async ({ pa
   await page.getByRole("button", { name: /confirm winner/i }).click();
   await expect(page.getByText(/winner confirmed/i)).toBeVisible();
   await expect(page.getByRole("button", { name: /next prize/i })).toBeVisible();
+
   const confirmedAttemptCount = await page.evaluate(() => {
     const raw = window.localStorage.getItem("vpbank-lucky-draw:event-state");
     if (!raw) {

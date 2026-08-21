@@ -5,8 +5,6 @@ export interface PresentationControlsProps {
   pendingWinner: Participant | undefined;
   isCommandInFlight: boolean;
   onStartCountdown: () => void;
-  onStartDraw: () => void;
-  onSelectWinner: () => void;
   onConfirmWinner: () => void;
   onMarkAbsent: () => void;
   onAdvancePrize: () => void;
@@ -17,8 +15,6 @@ export function PresentationControls({
   pendingWinner,
   isCommandInFlight,
   onStartCountdown,
-  onStartDraw,
-  onSelectWinner,
   onConfirmWinner,
   onMarkAbsent,
   onAdvancePrize,
@@ -48,9 +44,7 @@ export function PresentationControls({
   if (phase === "countdown") {
     return (
       <section className="presentation-controls" aria-label="MC live controls">
-        <button type="button" className="button button--primary" onClick={onStartDraw} disabled={isCommandInFlight}>
-          Complete Countdown
-        </button>
+        <p className="presentation-controls__status">Countdown running...</p>
       </section>
     );
   }
@@ -58,9 +52,7 @@ export function PresentationControls({
   if (phase === "drawing") {
     return (
       <section className="presentation-controls" aria-label="MC live controls">
-        <button type="button" className="button button--primary" onClick={onSelectWinner} disabled={isCommandInFlight}>
-          Select Winner
-        </button>
+        <p className="presentation-controls__status">Selecting winner...</p>
       </section>
     );
   }

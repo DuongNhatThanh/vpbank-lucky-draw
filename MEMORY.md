@@ -5,10 +5,10 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 -->
 
 ## Active Phase & Goal
-**Current Task:** Phase 10B Reel Timing + Audio Choreography implemented; awaiting human review.
+**Current Task:** Phase 10B.1 Automated Draw Orchestration hardening applied locally; awaiting human verification.
 **Next Steps:**
-1. Review the updated Presentation Mode reel timing and audio choreography in rehearsal and confirm the live flow still runs cleanly without returning to Operator Mode.
-2. After Phase 10B approval, continue to Phase 10C visual choreography without changing draw correctness or persistence architecture.
+1. Re-run lint, typecheck, test, E2E, and build locally, then rehearse the one-click Presentation draw flow and confirm countdown/reel audio never overlap.
+2. After Phase 10B.1 approval, continue to Phase 10C visual choreography without changing draw correctness or persistence architecture.
 
 ## Architectural Decisions
 *(Log specific choices made during the build here so future agents respect them)*
@@ -44,11 +44,13 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - 2026-08-20 - Phase 10A adds phase-aware MC controls directly to Presentation Mode by reusing the existing App live handlers and appController transitions; Presentation still never performs RNG or mutates draw state directly.
 - 2026-08-20 - Operator Mode remains the fallback/admin/recovery interface, while the normal MC live flow can run from Presentation Mode after opening it once.
 - 2026-08-21 - Phase 10B adds reel timing and audio choreography in Presentation Mode: the reel spin loop runs continuously during drawing/reelStopping, digits settle about two seconds apart, each digit settle triggers a digit-stop sound, the loop stops at the fourth digit, the final reveal sound plays once, Confirm Winner stays silent, and Grand Prize uses its own final reveal sound.
+- 2026-08-21 - Phase 10B.1 keeps the underlying domain phases and transitions unchanged while Presentation orchestrates the approved handlers automatically: one Start Draw click drives countdown, START_DRAW, SELECT_WINNER, persisted reel reveal, and pendingWinner; Mark Absent & Redraw persists absent state before automatically starting the same-prize redraw countdown. Operator Mode retains manual Complete Countdown, Select Winner, and Complete Reveal fallback controls.
+- 2026-08-21 - Phase 10B.1 countdown audio hardening treats `countdown-tick.mp3` as one complete ~3 second cue: it plays once per countdown, visual steps use 1000 ms cadence, countdown completes at 3000 ms, the cue is stopped/reset before reel spin starts, and toggling sound back on mid-countdown does not replay it.
 
 ## Known Issues & Quirks
 *(Log current bugs or weird workarounds here)*
 - React scaffold, pure domain foundation, event state machine, persistence/recovery, participant import/validation, Phase 6A application state wiring, Phase 6B operator setup UI, Phase 7 live operator flow, and Phase 8A/8B presentation polish exist; XLSX parser support remains intentionally deferred.
-- In this Codex sandbox, Vitest/Vite config loading can fail with an esbuild parent-directory `Access is denied` error; rerunning `npm run test` or `npm run build` with approved unsandboxed execution passed.
+- In this Codex sandbox, Vitest/Vite config loading can fail with an esbuild parent-directory `Access is denied` error; this currently blocks `npm run test`, `npm run test:e2e`, and the Vite half of `npm run build` unless unsandboxed execution is available.
 - Phase 2 Domain Foundation is approved.
 - Phase 3 Event State Machine is approved.
 - Phase 4 Persistence & Recovery is approved.
@@ -60,7 +62,8 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - Phase 8B Fullscreen + Audio + Confetti + Final Event Polish is approved.
 - Phase 9 Rehearsal & Launch Readiness automated checks are approved; venue/human rehearsal is still required.
 - Phase 10A Single-Screen MC Live Experience is approved.
-- Phase 10B Reel Timing + Audio Choreography is implemented and awaiting human review.
+- Phase 10B Reel Timing + Audio Choreography is approved.
+- Phase 10B.1 Automated Draw Orchestration is implemented but still needs a successful full verification run before approval.
 - Presentation mode now uses the available VPBank logo asset from `public/vpbank-logo.webp`.
 - Exact XLSX package/version is still TBD; default candidate is a stable pinned browser-compatible SheetJS `xlsx` package.
 - Exact Vercel URL/domain, sound default state, reel/countdown timing, and default participant filename details will be finalized during implementation/rehearsal.

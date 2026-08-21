@@ -21,6 +21,32 @@ describe("presentation audio controller", () => {
     expect(created.instances).toHaveLength(2);
   });
 
+  it("replaces an active one-shot of the same sound instead of overlapping it", async () => {
+    const created = createInspectableAudioFactory();
+    const controller = createPresentationAudioController(created.factory);
+
+    await expect(controller.playOneShot("countdownTick", true)).resolves.toBe(true);
+    const first = created.instances[0];
+    await expect(controller.playOneShot("countdownTick", true)).resolves.toBe(true);
+
+    expect(created.instances).toHaveLength(2);
+    expect(first?.pause).toHaveBeenCalledTimes(1);
+    expect(first?.currentTime).toBe(0);
+    expect(created.instances[1]?.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("can stop an active one-shot sound without affecting disabled playback", async () => {
+    const created = createInspectableAudioFactory();
+    const controller = createPresentationAudioController(created.factory);
+
+    await expect(controller.playOneShot("countdownTick", true)).resolves.toBe(true);
+    controller.stopOneShot("countdownTick");
+
+    expect(created.instances[0]?.pause).toHaveBeenCalledTimes(1);
+    expect(created.instances[0]?.currentTime).toBe(0);
+    expect(() => controller.stopOneShot("countdownTick")).not.toThrow();
+  });
+
   it("keeps the reel spin loop single-instance and stops it safely", async () => {
     const created = createInspectableAudioFactory();
     const controller = createPresentationAudioController(created.factory);

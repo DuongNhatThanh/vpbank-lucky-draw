@@ -188,13 +188,16 @@ describe("App", () => {
   it("operates the first prize entirely from Presentation Mode", () => {
     vi.useFakeTimers();
     const storage = new MemoryStorage();
+    let selectionCalls = 0;
     try {
       render(
         <App
           now={NOW}
           storage={storage}
           createAttemptId={() => "attempt-0"}
-          selectWinnerDependencies={firstEligibleDependencies()}
+          selectWinnerDependencies={countingFirstEligibleDependencies(() => {
+            selectionCalls += 1;
+          })}
         />,
       );
 
@@ -206,19 +209,24 @@ describe("App", () => {
       expect(screen.getByRole("button", { name: /start draw/i })).toBeVisible();
 
       fireEvent.click(screen.getByRole("button", { name: /start draw/i }));
-      expect(screen.getByRole("button", { name: /complete countdown/i })).toBeVisible();
+      expect(screen.queryByRole("button", { name: /complete countdown/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /select winner/i })).not.toBeInTheDocument();
+      expect(screen.getByText(/countdown running/i)).toBeVisible();
 
-      fireEvent.click(screen.getByRole("button", { name: /complete countdown/i }));
-      expect(screen.getByRole("button", { name: /select winner/i })).toBeVisible();
-
-      fireEvent.click(screen.getByRole("button", { name: /select winner/i }));
       act(() => {
-        vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[3] + 1);
+        vi.advanceTimersByTime(PRESENTATION_TIMING.countdownCompleteMs + 1);
+      });
+
+      expect(screen.getByText(/revealing winner/i)).toBeVisible();
+
+      act(() => {
+        vi.advanceTimersByTime(PRESENTATION_TIMING.reelCompleteMs + 1);
         vi.runAllTimers();
       });
 
       expect(screen.getByLabelText(/winning code 0001/i)).toBeVisible();
       expect(screen.getByRole("button", { name: /confirm winner/i })).toBeVisible();
+      expect(selectionCalls).toBe(1);
 
       fireEvent.click(screen.getByRole("button", { name: /confirm winner/i }));
       expect(screen.getByRole("button", { name: /next prize/i })).toBeVisible();
@@ -226,6 +234,7 @@ describe("App", () => {
       fireEvent.click(screen.getByRole("button", { name: /next prize/i }));
       expect(screen.getByRole("heading", { name: /^Prize 2$/i })).toBeVisible();
       expect(readPersistedEventState(storage).attempts[0]?.participantId).toBe("participant-0001");
+      expect(readPersistedEventState(storage).attempts).toHaveLength(1);
     } finally {
       vi.useRealTimers();
     }
@@ -273,11 +282,13 @@ describe("App", () => {
       fireEvent.click(screen.getByRole("button", { name: /continue to live draw/i }));
       fireEvent.click(screen.getByRole("button", { name: /open presentation/i }));
       fireEvent.click(screen.getByRole("button", { name: /start draw/i }));
-      fireEvent.click(screen.getByRole("button", { name: /complete countdown/i }));
-      fireEvent.click(screen.getByRole("button", { name: /select winner/i }));
 
       act(() => {
-        vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[3] + 1);
+        vi.advanceTimersByTime(PRESENTATION_TIMING.countdownCompleteMs + 1);
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(PRESENTATION_TIMING.reelCompleteMs + 1);
         vi.runAllTimers();
       });
 
@@ -314,11 +325,13 @@ describe("App", () => {
       fireEvent.click(screen.getByRole("button", { name: /open presentation/i }));
 
       fireEvent.click(screen.getByRole("button", { name: /start draw/i }));
-      fireEvent.click(screen.getByRole("button", { name: /complete countdown/i }));
-      fireEvent.click(screen.getByRole("button", { name: /select winner/i }));
 
       act(() => {
-        vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[3] + 1);
+        vi.advanceTimersByTime(PRESENTATION_TIMING.countdownCompleteMs + 1);
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(PRESENTATION_TIMING.reelCompleteMs + 1);
         vi.runAllTimers();
       });
 
@@ -327,22 +340,23 @@ describe("App", () => {
 
       fireEvent.click(screen.getByRole("button", { name: /mark absent/i }));
 
-      expect(screen.getByRole("button", { name: /start draw/i })).toBeVisible();
+      expect(screen.getByText(/countdown running/i)).toBeVisible();
+      expect(screen.queryByRole("button", { name: /start draw/i })).not.toBeInTheDocument();
       expect(screen.getByRole("heading", { name: /^Prize 1$/i })).toBeVisible();
 
       const afterAbsent = readPersistedEventState(storage);
       const absentAttempt = afterAbsent.attempts.find((attempt) => attempt.status === "absent");
       expect(absentAttempt).toBeDefined();
       expect(afterAbsent.currentPrizeIndex).toBe(0);
-      expect(afterAbsent.phase).toBe("ready");
+      expect(afterAbsent.phase).toBe("countdown");
       expect(afterAbsent.participants.find((participant) => participant.id === absentAttempt?.participantId)?.status).toBe("absent");
 
-      fireEvent.click(screen.getByRole("button", { name: /start draw/i }));
-      fireEvent.click(screen.getByRole("button", { name: /complete countdown/i }));
-      fireEvent.click(screen.getByRole("button", { name: /select winner/i }));
+      act(() => {
+        vi.advanceTimersByTime(PRESENTATION_TIMING.countdownCompleteMs + 1);
+      });
 
       act(() => {
-        vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[3] + 1);
+        vi.advanceTimersByTime(PRESENTATION_TIMING.reelCompleteMs + 1);
         vi.runAllTimers();
       });
 
@@ -381,7 +395,7 @@ describe("App", () => {
       expect(screen.getByText(/revealing winner/i)).toBeVisible();
 
       act(() => {
-        vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[3] + 1);
+        vi.advanceTimersByTime(PRESENTATION_TIMING.reelCompleteMs + 1);
         vi.runAllTimers();
       });
 
@@ -460,6 +474,78 @@ describe("App", () => {
     expect(persistedState.participants.find((participant) => participant.status === "pending")?.code).toBe("0001");
     expect(storage.peek(PERSISTENCE_KEY)).not.toContain("attempt-1");
   });
+
+  it("auto-advances a recovered countdown in Presentation without selecting before countdown completes", () => {
+    vi.useFakeTimers();
+    const storage = new MemoryStorage();
+    const savedState = createCountdownRecoverableState();
+    let selectionCalls = 0;
+    storage.setItem(PERSISTENCE_KEY, JSON.stringify({ storageVersion: 1, savedAt: SAVED_AT, state: savedState }));
+
+    try {
+      render(
+        <App
+          now={NOW}
+          storage={storage}
+          createAttemptId={() => "attempt-recovered"}
+          selectWinnerDependencies={countingFirstEligibleDependencies(() => {
+            selectionCalls += 1;
+          })}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /resume previous session/i }));
+      fireEvent.click(screen.getByRole("button", { name: /open presentation/i }));
+
+      expect(screen.getByTestId("presentation-countdown-value")).toHaveTextContent("3");
+      expect(readPersistedEventState(storage).phase).toBe("countdown");
+      expect(readPersistedEventState(storage).attempts).toHaveLength(0);
+      expect(selectionCalls).toBe(0);
+
+      act(() => {
+        vi.advanceTimersByTime(PRESENTATION_TIMING.countdownCompleteMs + 1);
+      });
+
+      expect(screen.getByText(/revealing winner/i)).toBeVisible();
+      expect(selectionCalls).toBe(1);
+      expect(readPersistedEventState(storage).phase).toBe("reelStopping");
+      expect(readPersistedEventState(storage).attempts).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("auto-selects exactly once after resuming drawing in Presentation", () => {
+    const storage = new MemoryStorage();
+    const savedState = createDrawingRecoverableState();
+    let selectionCalls = 0;
+    storage.setItem(PERSISTENCE_KEY, JSON.stringify({ storageVersion: 1, savedAt: SAVED_AT, state: savedState }));
+
+    render(
+      <App
+        now={NOW}
+        storage={storage}
+        createAttemptId={() => "attempt-recovered"}
+        selectWinnerDependencies={countingFirstEligibleDependencies(() => {
+          selectionCalls += 1;
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /resume previous session/i }));
+    fireEvent.click(screen.getByRole("button", { name: /open presentation/i }));
+
+    expect(screen.getByText(/revealing winner/i)).toBeVisible();
+    expect(selectionCalls).toBe(1);
+    expect(readPersistedEventState(storage).phase).toBe("reelStopping");
+    expect(readPersistedEventState(storage).attempts).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /sound on/i }));
+    fireEvent.click(screen.getByRole("button", { name: /sound off/i }));
+
+    expect(selectionCalls).toBe(1);
+    expect(readPersistedEventState(storage).attempts).toHaveLength(1);
+  });
 });
 
 
@@ -485,6 +571,24 @@ function createReelStoppingRecoverableState(code: string): EventState {
         createdAt: NOW,
       },
     ],
+    configurationLocked: true,
+    updatedAt: NOW,
+  };
+}
+
+function createCountdownRecoverableState(): EventState {
+  return {
+    ...createInitialEventState(NOW),
+    phase: "countdown",
+    configurationLocked: true,
+    updatedAt: NOW,
+  };
+}
+
+function createDrawingRecoverableState(): EventState {
+  return {
+    ...createInitialEventState(NOW),
+    phase: "drawing",
     configurationLocked: true,
     updatedAt: NOW,
   };
@@ -581,6 +685,15 @@ function firstEligibleDependencies(excludedCode?: string) {
       }
 
       return { ok: true as const, value: selected };
+    },
+  };
+}
+
+function countingFirstEligibleDependencies(onSelect: () => void, excludedCode?: string) {
+  return {
+    selectWinner: (participants: readonly { code: string; status: string }[]) => {
+      onSelect();
+      return firstEligibleDependencies(excludedCode).selectWinner(participants);
     },
   };
 }
