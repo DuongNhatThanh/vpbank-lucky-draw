@@ -5,10 +5,10 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 -->
 
 ## Active Phase & Goal
-**Current Task:** Phase 10A Single-Screen MC Live Experience implemented; awaiting human review.
+**Current Task:** Phase 10B Reel Timing + Audio Choreography implemented; awaiting human review.
 **Next Steps:**
-1. Review the Presentation Mode MC controls in rehearsal and confirm the full live flow can run without returning to Operator Mode.
-2. After Phase 10A approval, continue to Phase 10B/10C visual/audio choreography without changing draw correctness or persistence architecture.
+1. Review the updated Presentation Mode reel timing and audio choreography in rehearsal and confirm the live flow still runs cleanly without returning to Operator Mode.
+2. After Phase 10B approval, continue to Phase 10C visual choreography without changing draw correctness or persistence architecture.
 
 ## Architectural Decisions
 *(Log specific choices made during the build here so future agents respect them)*
@@ -43,7 +43,7 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - 2026-08-20 - Phase 9 automated readiness checks are approved.
 - 2026-08-20 - Phase 10A adds phase-aware MC controls directly to Presentation Mode by reusing the existing App live handlers and appController transitions; Presentation still never performs RNG or mutates draw state directly.
 - 2026-08-20 - Operator Mode remains the fallback/admin/recovery interface, while the normal MC live flow can run from Presentation Mode after opening it once.
-- 2026-08-20 - Phase 10B/10C visual/audio choreography is not implemented yet; reel timing, continuous spin audio, digit-stop audio choreography, gold winner animation, scale-up, and fireworks redesign remain deferred.
+- 2026-08-21 - Phase 10B adds reel timing and audio choreography in Presentation Mode: the reel spin loop runs continuously during drawing/reelStopping, digits settle about two seconds apart, each digit settle triggers a digit-stop sound, the loop stops at the fourth digit, the final reveal sound plays once, Confirm Winner stays silent, and Grand Prize uses its own final reveal sound.
 
 ## Known Issues & Quirks
 *(Log current bugs or weird workarounds here)*
@@ -59,7 +59,8 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - Phase 8A Presentation Mode + Reel System is approved.
 - Phase 8B Fullscreen + Audio + Confetti + Final Event Polish is approved.
 - Phase 9 Rehearsal & Launch Readiness automated checks are approved; venue/human rehearsal is still required.
-- Phase 10A Single-Screen MC Live Experience is implemented and awaiting human review.
+- Phase 10A Single-Screen MC Live Experience is approved.
+- Phase 10B Reel Timing + Audio Choreography is implemented and awaiting human review.
 - Presentation mode now uses the available VPBank logo asset from `public/vpbank-logo.webp`.
 - Exact XLSX package/version is still TBD; default candidate is a stable pinned browser-compatible SheetJS `xlsx` package.
 - Exact Vercel URL/domain, sound default state, reel/countdown timing, and default participant filename details will be finalized during implementation/rehearsal.
@@ -78,4 +79,4 @@ DO NOT delete historical context if it is still relevant. Compress older complet
 - [x] Presentation mode and reels (approved)
 - [x] Fullscreen, audio, confetti, and final event polish
 - [x] Rehearsal and launch automated readiness
-- [ ] Single-screen MC live experience (implemented; awaiting human review)
+- [x] Single-screen MC live experience (approved)

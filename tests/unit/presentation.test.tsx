@@ -8,6 +8,7 @@ import type { AppState } from "../../src/state/actions";
 
 const NOW = "2026-08-20T08:00:00.000Z";
 const RESOLVED_AT = "2026-08-20T08:01:00.000Z";
+const audioInstances: MockAudioInstance[] = [];
 
 afterEach(() => {
   vi.useRealTimers();
@@ -19,7 +20,23 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  vi.stubGlobal("Audio", vi.fn(() => ({ play: vi.fn().mockResolvedValue(undefined), volume: 1 })));
+  audioInstances.length = 0;
+  vi.stubGlobal(
+    "Audio",
+    vi.fn((src: string) => {
+      const audio = {
+        src,
+        play: vi.fn().mockResolvedValue(undefined),
+        pause: vi.fn(),
+        loop: false,
+        volume: 1,
+        currentTime: 0,
+      } satisfies MockAudioInstance;
+
+      audioInstances.push(audio);
+      return audio;
+    }),
+  );
 });
 
 describe("PresentationStage", () => {
@@ -216,14 +233,73 @@ describe("PresentationStage", () => {
     const audio = { play, volume: 1 } as unknown as HTMLAudioElement;
     const factory = vi.fn(() => audio);
 
-    await expect(playPresentationSound("revealComplete", true, factory)).resolves.toBe(true);
+    await expect(playPresentationSound("digitStop", true, factory)).resolves.toBe(true);
     expect(factory).toHaveBeenCalledWith("/audio/digit-stop.mp3");
     expect(play).toHaveBeenCalledTimes(1);
 
     const rejectedAudio = { play: vi.fn().mockRejectedValue(new Error("blocked")), volume: 1 } as unknown as HTMLAudioElement;
-    await expect(playPresentationSound("drawStart", true, () => rejectedAudio)).resolves.toBe(false);
-    await expect(playPresentationSound("drawStart", false, factory)).resolves.toBe(false);
+    await expect(playPresentationSound("winnerReveal", true, () => rejectedAudio)).resolves.toBe(false);
+    await expect(playPresentationSound("countdownTick", false, factory)).resolves.toBe(false);
     expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it("plays the reel spin loop once, stops it after the fourth digit, and suppresses duplicate reveal sounds", () => {
+    vi.useFakeTimers();
+    const onRevealComplete = vi.fn();
+    const state = createReelStoppingState("0027");
+
+    const { rerender } = render(
+      <PresentationStage state={withPhase(state, "drawing")} onReturnToOperator={() => undefined} onRevealComplete={onRevealComplete} />,
+    );
+
+    expect(audioInstances).toHaveLength(1);
+    expect(audioInstances[0]?.src).toBe("/audio/reel-spin-loop.mp3");
+    expect(audioInstances[0]?.play).toHaveBeenCalledTimes(1);
+
+    rerender(<PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={onRevealComplete} />);
+
+    act(() => {
+      vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[0]);
+    });
+    expect(audioInstances.filter((audio) => audio.src === "/audio/digit-stop.mp3")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /sound on/i }));
+
+    act(() => {
+      vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[1] - PRESENTATION_TIMING.reelDigitStopsMs[0]);
+    });
+    expect(audioInstances.filter((audio) => audio.src === "/audio/digit-stop.mp3")).toHaveLength(1);
+    expect(audioInstances.filter((audio) => audio.src === "/audio/winner-reveal.mp3")).toHaveLength(0);
+
+    act(() => {
+      vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[3]);
+      vi.runAllTimers();
+    });
+
+    expect(audioInstances.filter((audio) => audio.src === "/audio/reel-spin-loop.mp3")[0]?.pause).toHaveBeenCalledTimes(1);
+    expect(audioInstances.filter((audio) => audio.src === "/audio/winner-reveal.mp3")).toHaveLength(0);
+    expect(onRevealComplete).toHaveBeenCalledTimes(1);
+
+    rerender(<PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={onRevealComplete} />);
+    expect(audioInstances.filter((audio) => audio.src === "/audio/reel-spin-loop.mp3")).toHaveLength(1);
+    expect(audioInstances.filter((audio) => audio.src === "/audio/winner-reveal.mp3")).toHaveLength(0);
+  });
+
+  it("plays the Grand Prize reveal sound once for the final prize", () => {
+    vi.useFakeTimers();
+    const onRevealComplete = vi.fn();
+    const state = createGrandPrizeReelStoppingState("0027");
+
+    render(<PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={onRevealComplete} />);
+
+    act(() => {
+      vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[3] + 1);
+      vi.runAllTimers();
+    });
+
+    expect(audioInstances.filter((audio) => audio.src === "/audio/grand-prize.mp3")).toHaveLength(1);
+    expect(audioInstances.filter((audio) => audio.src === "/audio/winner-reveal.mp3")).toHaveLength(0);
+    expect(onRevealComplete).toHaveBeenCalledTimes(1);
   });
 
   it("shows bounded celebration for a confirmed prize and enhanced Grand Prize styling", () => {
@@ -374,6 +450,21 @@ function createEventCompleteState(): AppState {
   };
 }
 
+function createGrandPrizeReelStoppingState(code: string): AppState {
+  const state = createPendingAttemptState("reelStopping", code);
+  return {
+    ...state,
+    event: {
+      ...state.event,
+      currentPrizeIndex: 5,
+      attempts: state.event.attempts.map((attempt) => ({
+        ...attempt,
+        prizeId: state.event.prizes[5]!.id,
+      })),
+    },
+  };
+}
+
 function installMatchMedia(matches: boolean) {
   vi.stubGlobal(
     "matchMedia",
@@ -389,3 +480,12 @@ function installMatchMedia(matches: boolean) {
     })),
   );
 }
+
+type MockAudioInstance = {
+  src: string;
+  play: ReturnType<typeof vi.fn>;
+  pause: ReturnType<typeof vi.fn>;
+  loop: boolean;
+  volume: number;
+  currentTime: number;
+};

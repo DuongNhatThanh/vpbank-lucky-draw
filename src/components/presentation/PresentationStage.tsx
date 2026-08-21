@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { EventPhase, Participant } from "../../domain/types";
 import type { AppState } from "../../state/actions";
 import type { EventHistoryItem } from "../../state/selectors";
@@ -9,8 +9,8 @@ import {
   selectCurrentPrize,
   selectPrizeProgress,
 } from "../../state/selectors";
+import { createPresentationAudioController, playPresentationSound } from "../../presentation/audio";
 import { PRESENTATION_TIMING } from "../../presentation/timing";
-import { playPresentationSound } from "../../presentation/audio";
 import { useFullscreen } from "../../presentation/fullscreen";
 import { StatusMessage } from "../shared/StatusMessage";
 import { CelebrationEffect } from "./CelebrationEffect";
@@ -57,12 +57,14 @@ export function PresentationStage({
   const [countdownStep, setCountdownStep] = useState(3);
   const [presentationSoundEnabled, setPresentationSoundEnabled] = useState(state.event.soundEnabled);
   const prefersReducedMotion = usePrefersReducedMotion();
+  const audioController = useMemo(() => createPresentationAudioController(), []);
   const onRevealCompleteRef = useRef(onRevealComplete);
   const presentationSoundEnabledRef = useRef(presentationSoundEnabled);
   const revealAttemptRef = useRef<string | null>(null);
   const revealCompletedRef = useRef(false);
   const countdownAttemptRef = useRef<string | null>(null);
-  const soundPhaseRef = useRef<EventPhase | null>(null);
+  const countdownStepRef = useRef<number | null>(null);
+  const revealHoldTimeoutRef = useRef<number | null>(null);
   const fullscreen = useFullscreen(stageRef);
 
   useEffect(() => {
@@ -74,32 +76,44 @@ export function PresentationStage({
   }, [presentationSoundEnabled]);
 
   useEffect(() => {
-    if (soundPhaseRef.current === phase) {
-      return;
+    if (phase === "drawing" || phase === "reelStopping") {
+      void audioController.startLoop(presentationSoundEnabled);
+    } else {
+      audioController.stopLoop();
     }
-
-    soundPhaseRef.current = phase;
-    if (phase === "drawing") {
-      void playPresentationSound("drawStart", presentationSoundEnabled);
-    } else if (phase === "prizeComplete") {
-      void playPresentationSound(isGrandPrize ? "grandPrize" : "winnerConfirmed", presentationSoundEnabled);
-    }
-  }, [isGrandPrize, phase, presentationSoundEnabled]);
+  }, [audioController, phase, presentationSoundEnabled]);
 
   useEffect(() => {
-    if (phase === "countdown") {
-      void playPresentationSound("countdownTick", presentationSoundEnabled);
+    if (phase === "countdown" && countdownStepRef.current !== countdownStep) {
+      countdownStepRef.current = countdownStep;
+      void playPresentationSound("countdownTick", presentationSoundEnabledRef.current);
+    } else if (phase !== "countdown") {
+      countdownAttemptRef.current = null;
+      countdownStepRef.current = null;
     }
-  }, [countdownStep, phase, presentationSoundEnabled]);
+  }, [countdownStep, phase]);
 
   useEffect(() => {
     onRevealCompleteRef.current = onRevealComplete;
   }, [onRevealComplete]);
 
   useEffect(() => {
+    return () => {
+      audioController.stopLoop();
+      if (revealHoldTimeoutRef.current !== null) {
+        window.clearTimeout(revealHoldTimeoutRef.current);
+      }
+    };
+  }, [audioController]);
+
+  useEffect(() => {
     if (phase !== "reelStopping") {
       revealAttemptRef.current = null;
       revealCompletedRef.current = false;
+      if (revealHoldTimeoutRef.current !== null) {
+        window.clearTimeout(revealHoldTimeoutRef.current);
+        revealHoldTimeoutRef.current = null;
+      }
       setReelSettledDigits(0);
       return;
     }
@@ -111,40 +125,54 @@ export function PresentationStage({
 
     if (prefersReducedMotion) {
       setReelSettledDigits(4);
-      return;
+      audioController.stopLoop();
+      if (!revealCompletedRef.current) {
+        const finalSound = isGrandPrize ? "grandPrize" : "winnerReveal";
+        void playPresentationSound(finalSound, presentationSoundEnabledRef.current);
+      }
+      if (revealHoldTimeoutRef.current !== null) {
+        window.clearTimeout(revealHoldTimeoutRef.current);
+      }
+      revealHoldTimeoutRef.current = window.setTimeout(() => {
+        revealHoldTimeoutRef.current = null;
+        triggerRevealComplete();
+      }, PRESENTATION_TIMING.reducedMotionCompleteMs);
+      return () => {
+        if (revealHoldTimeoutRef.current !== null) {
+          window.clearTimeout(revealHoldTimeoutRef.current);
+          revealHoldTimeoutRef.current = null;
+        }
+      };
     }
 
     setReelSettledDigits(0);
     const timers = PRESENTATION_TIMING.reelDigitStopsMs.map((delayMs, index) =>
       window.setTimeout(() => {
         setReelSettledDigits(index + 1);
+        void playPresentationSound("digitStop", presentationSoundEnabledRef.current);
+
         if (index === PRESENTATION_TIMING.reelDigitStopsMs.length - 1) {
-          void playPresentationSound("revealComplete", presentationSoundEnabledRef.current);
-          triggerRevealComplete();
+          audioController.stopLoop();
+          void playPresentationSound(isGrandPrize ? "grandPrize" : "winnerReveal", presentationSoundEnabledRef.current);
+          if (revealHoldTimeoutRef.current !== null) {
+            window.clearTimeout(revealHoldTimeoutRef.current);
+          }
+          revealHoldTimeoutRef.current = window.setTimeout(() => {
+            revealHoldTimeoutRef.current = null;
+            triggerRevealComplete();
+          }, Math.max(0, PRESENTATION_TIMING.reelCompleteMs - delayMs));
         }
       }, delayMs),
     );
 
     return () => {
       timers.forEach((timer) => window.clearTimeout(timer));
+      if (revealHoldTimeoutRef.current !== null) {
+        window.clearTimeout(revealHoldTimeoutRef.current);
+        revealHoldTimeoutRef.current = null;
+      }
     };
-  }, [phase, prefersReducedMotion, state.event.currentAttemptId]);
-
-  useEffect(() => {
-    if (phase !== "reelStopping" || reelSettledDigits < 4) {
-      return;
-    }
-
-    if (revealCompletedRef.current || revealAttemptRef.current !== state.event.currentAttemptId) {
-      return;
-    }
-
-    const timer = window.setTimeout(triggerRevealComplete, prefersReducedMotion ? PRESENTATION_TIMING.reducedMotionCompleteMs : 0);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [phase, prefersReducedMotion, reelSettledDigits, state.event.currentAttemptId]);
+  }, [audioController, isGrandPrize, phase, prefersReducedMotion, state.event.currentAttemptId]);
 
   useEffect(() => {
     if (phase !== "countdown") {
@@ -155,6 +183,7 @@ export function PresentationStage({
 
     if (countdownAttemptRef.current !== state.event.currentAttemptId) {
       countdownAttemptRef.current = state.event.currentAttemptId ?? null;
+      countdownStepRef.current = null;
       setCountdownStep(3);
     }
 
