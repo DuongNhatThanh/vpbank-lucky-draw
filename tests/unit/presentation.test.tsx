@@ -49,7 +49,7 @@ describe("PresentationStage", () => {
       <PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={onRevealComplete} />,
     );
 
-    expect(screen.getByRole("heading", { name: /winning number/i })).toBeVisible();
+    expect(screen.getByText(/^Winning Number$/i)).toBeVisible();
     expect(screen.queryAllByTestId("presentation-digit")).toHaveLength(0);
 
     act(() => {
@@ -195,7 +195,6 @@ describe("PresentationStage", () => {
         state={drawingState}
         onReturnToOperator={() => undefined}
         onRevealComplete={() => undefined}
-        onSelectWinner={() => undefined}
       />,
     );
 
@@ -290,10 +289,21 @@ describe("PresentationStage", () => {
   it("renders all six confirmed winners at event completion", () => {
     const state = createEventCompleteState();
 
-    render(<PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />);
+    render(
+      <PresentationStage
+        state={state}
+        onReturnToOperator={() => undefined}
+        onRevealComplete={() => undefined}
+      />,
+    );
 
-    expect(screen.getByText(/all six prizes have confirmed winners/i)).toBeVisible();
-    expect(screen.getByLabelText("Confirmed winners").querySelectorAll("li")).toHaveLength(6);
+    const confirmedWinners = screen.getByLabelText("Confirmed winners");
+
+    expect(confirmedWinners).toBeVisible();
+    expect(
+      confirmedWinners.querySelector(".presentation-winners__eyebrow"),
+    ).toHaveTextContent("Lucky Draw Complete");
+    expect(confirmedWinners.querySelectorAll("li")).toHaveLength(6);
   });
 
   it("requests and exits fullscreen when the browser supports it", async () => {
@@ -420,28 +430,70 @@ describe("PresentationStage", () => {
     expect(onRevealComplete).toHaveBeenCalledTimes(1);
   });
 
-  it("shows bounded celebration for a confirmed prize and enhanced Grand Prize styling", () => {
-    const state = createPrizeCompleteState("0027");
-    const { container, rerender } = render(
+  it("activates the final gold winner and both side fireworks when the fourth digit settles", () => {
+    vi.useFakeTimers();
+    const state = createReelStoppingState("0027");
+    const { container } = render(
       <PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />,
     );
 
-    expect(screen.getByTestId("confetti")).toBeVisible();
+    act(() => {
+      vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[2] + 1);
+    });
+    expect(container.querySelector(".reel-display--winner")).toBeNull();
+    expect(screen.queryByTestId("celebration-fireworks")).not.toBeInTheDocument();
 
-    state.event.currentPrizeIndex = 5;
-    state.event.attempts[0] = { ...state.event.attempts[0]!, prizeId: state.event.prizes[5]!.id };
-    rerender(<PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />);
+    act(() => {
+      vi.advanceTimersByTime(PRESENTATION_TIMING.reelDigitStopsMs[3] - PRESENTATION_TIMING.reelDigitStopsMs[2]);
+    });
 
-    expect(container.querySelector(".celebration-effect--grand")).not.toBeNull();
-    expect(container.querySelector(".presentation-stage--grand")).not.toBeNull();
+    expect(container.querySelector(".reel-display--winner")).not.toBeNull();
+    expect(screen.getAllByTestId("presentation-digit").map((digit) => digit.textContent).join("")).toBe("0027");
+    expect(screen.getByTestId("celebration-fireworks")).toBeVisible();
+    expect(screen.getByTestId("fireworks-left")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByTestId("fireworks-right")).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("uses a static celebration under reduced motion", () => {
-    installMatchMedia(true);
-    render(<PresentationStage state={createPrizeCompleteState("0027")} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />);
+  it("keeps pending and confirmed winners as a gold hero without admin status cards", () => {
+    const pending = createPendingWinnerState("0027");
+    const { container, rerender } = render(
+      <PresentationStage state={pending} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />,
+    );
 
-    expect(screen.getByTestId("confetti-static")).toBeVisible();
-    expect(screen.queryByTestId("confetti")).not.toBeInTheDocument();
+    expect(container.querySelector(".winner-reveal--final")).not.toBeNull();
+    expect(container.querySelector(".winner-reveal__code--gold")).not.toBeNull();
+    expect(screen.queryByText(/waiting for confirmation/i)).not.toBeInTheDocument();
+
+    rerender(
+      <PresentationStage state={createPrizeCompleteState("0027")} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />,
+    );
+
+    expect(screen.getByLabelText(/winning code 0027/i)).toBeVisible();
+    expect(screen.queryByText(/winner confirmed/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /next prize/i })).toBeVisible();
+  });
+
+  it("uses enhanced Grand Prize winner styling", () => {
+    const state = createPendingWinnerState("0027");
+    state.event.currentPrizeIndex = 5;
+    state.event.attempts[0] = { ...state.event.attempts[0]!, prizeId: state.event.prizes[5]!.id };
+
+    const { container } = render(
+      <PresentationStage state={state} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />,
+    );
+
+    expect(container.querySelector(".presentation-stage--grand")).not.toBeNull();
+    expect(container.querySelector(".winner-reveal--grand")).not.toBeNull();
+    expect(container.querySelector(".celebration-effect--grand")).not.toBeNull();
+  });
+
+  it("uses a static gold celebration under reduced motion", () => {
+    installMatchMedia(true);
+    render(<PresentationStage state={createPendingWinnerState("0027")} onReturnToOperator={() => undefined} onRevealComplete={() => undefined} />);
+
+    expect(screen.getByTestId("celebration-static")).toBeVisible();
+    expect(screen.queryByTestId("celebration-fireworks")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/winning code 0027/i)).toBeVisible();
   });
 });
 

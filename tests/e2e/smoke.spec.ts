@@ -36,13 +36,15 @@ test("presentation live flow reveals the first winner and advances", async ({ pa
 
   await expect(page.locator('[data-testid="presentation-digit"]')).toHaveCount(4);
   await expect(page.locator('[data-testid="presentation-digit"]')).toHaveText(presentationWinnerCode!.split(""));
-  await expect(page.getByText(/waiting for confirmation/i)).toBeVisible();
+  await expect(page.locator(".winner-reveal--final")).toBeVisible();
+  await expect(page.getByText(/waiting for confirmation/i)).toHaveCount(0);
   await expect(page.getByRole("button", { name: /confirm winner/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /mark absent/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /complete reveal/i })).toHaveCount(0);
 
   await page.getByRole("button", { name: /confirm winner/i }).click();
-  await expect(page.getByText(/winner confirmed/i)).toBeVisible();
+  await expect(page.locator(".winner-reveal--final")).toBeVisible();
+  await expect(page.getByText(/winner confirmed/i)).toHaveCount(0);
   await expect(page.getByRole("button", { name: /next prize/i })).toBeVisible();
 
   const confirmedAttemptCount = await page.evaluate(() => {

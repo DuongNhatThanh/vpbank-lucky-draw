@@ -5,15 +5,17 @@ export interface ReelDigitProps {
   spinning: boolean;
   delayMs: number;
   isGrandPrize?: boolean;
+  winner?: boolean;
 }
 
-export function ReelDigit({ digit, spinning, delayMs, isGrandPrize = false }: ReelDigitProps) {
+export function ReelDigit({ digit, spinning, delayMs, isGrandPrize = false, winner = false }: ReelDigitProps) {
   return (
     <div
       className={[
         "reel-digit",
         spinning ? "reel-digit--spinning" : "reel-digit--stopped",
         isGrandPrize ? "reel-digit--grand" : "",
+        winner ? "reel-digit--winner" : "",
       ]
         .filter(Boolean)
         .join(" ")}

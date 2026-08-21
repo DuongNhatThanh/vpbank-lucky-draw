@@ -252,7 +252,8 @@ export function PresentationStage({
     onRevealCompleteRef.current();
   }
 
-  const celebrationActive = phase === "prizeComplete" || phase === "eventComplete";
+  const finalReelReveal = phase === "reelStopping" && reelSettledDigits === 4;
+  const celebrationActive = finalReelReveal || phase === "pendingWinner" || phase === "eventComplete";
 
   return (
     <section ref={stageRef} className={`presentation-stage${isGrandPrize ? " presentation-stage--grand" : ""}`} aria-label="Presentation mode">
@@ -274,7 +275,7 @@ export function PresentationStage({
           <div className="presentation-canvas__visual">
             {renderVisualState(phase, reelSettledDigits, countdownStep, isGrandPrize, pendingWinner, confirmedWinner, confirmedWinners)}
           </div>
-          <div className="presentation-canvas__status">{renderPhaseStatus(phase, currentPrize?.name, pendingWinner, confirmedWinners.length)}</div>
+          {renderPhaseCaption(phase, currentPrize?.name)}
         </section>
       </div>
       {phase !== "setup" && phase !== "eventComplete" ? (
@@ -354,7 +355,14 @@ function renderVisualState(
   }
 
   if (phase === "reelStopping") {
-    return <ReelDisplay code={pendingWinner?.code ?? null} settledDigits={settledDigits} isGrandPrize={isGrandPrize} />;
+    return (
+      <ReelDisplay
+        code={pendingWinner?.code ?? null}
+        settledDigits={settledDigits}
+        isGrandPrize={isGrandPrize}
+        celebrate={settledDigits === 4}
+      />
+    );
   }
 
   if (phase === "drawing") {
@@ -364,73 +372,36 @@ function renderVisualState(
   return <ReelDisplay code={null} settledDigits={4} isGrandPrize={isGrandPrize} />;
 }
 
-function renderPhaseStatus(
-  phase: EventPhase,
-  currentPrizeName: string | undefined,
-  pendingWinner: Participant | undefined,
-  confirmedWinnerCount: number,
-) {
+function renderPhaseCaption(phase: EventPhase, currentPrizeName: string | undefined) {
   if (phase === "setup") {
-    return (
-      <StatusMessage tone="info" title="Presentation is not active yet">
-        <p>Complete setup before the live presentation starts.</p>
-      </StatusMessage>
-    );
+    return <p className="presentation-stage-caption">Presentation is not active yet.</p>;
   }
 
   if (phase === "ready") {
-    return (
-      <StatusMessage tone="info" title={`Ready for ${currentPrizeName ?? "the next prize"}`}>
-        <p>Tap Start Draw when the MC is ready.</p>
-      </StatusMessage>
-    );
+    return <p className="presentation-stage-caption presentation-stage-caption--ready">Ready for {currentPrizeName ?? "the next prize"}</p>;
   }
 
   if (phase === "countdown") {
-    return (
-      <StatusMessage tone="info" title="Get Ready">
-        <p>Three, two, one.</p>
-      </StatusMessage>
-    );
+    return <p className="presentation-stage-caption">Get Ready</p>;
   }
 
   if (phase === "drawing") {
-    return (
-      <StatusMessage tone="info" title="Drawing...">
-        <p>The winning code will appear once it is safely saved.</p>
-      </StatusMessage>
-    );
+    return <p className="presentation-stage-caption">Drawing...</p>;
   }
 
   if (phase === "reelStopping") {
-    return (
-      <StatusMessage tone="success" title="Winning Number">
-        <p>The selected code is revealing now.</p>
-      </StatusMessage>
-    );
+    return <p className="presentation-stage-caption">Winning Number</p>;
   }
 
   if (phase === "pendingWinner") {
-    return (
-      <StatusMessage tone="warning" title="Winning Number">
-        <p>{pendingWinner ? `${pendingWinner.code} is waiting for confirmation.` : "A winner is waiting for confirmation."}</p>
-      </StatusMessage>
-    );
+    return <p className="presentation-stage-caption presentation-stage-caption--winner">Winning Number</p>;
   }
 
-  if (phase === "prizeComplete") {
-    return (
-      <StatusMessage tone="success" title="Winner Confirmed">
-        <p>Move to the next prize when the MC is ready.</p>
-      </StatusMessage>
-    );
+  if (phase === "eventComplete") {
+    return <p className="presentation-stage-caption presentation-stage-caption--winner">Lucky Draw Complete</p>;
   }
 
-  return (
-    <StatusMessage tone="success" title="Event Complete">
-      <p>All six prizes have confirmed winners. Total confirmed winners: {confirmedWinnerCount}.</p>
-    </StatusMessage>
-  );
+  return null;
 }
 
 function usePrefersReducedMotion() {
